@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pybloch"
+version = "0.1.0"
+description = "Bloch equation simulator (Python ctypes wrapper for bloch.c)"
+authors = [
+    {name = "Joseph G. Woods"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = ["numpy"]
+
+[project.urls]
+Source = "https://github.com/JosephGWoods/bloch"
+Issues = "https://github.com/JosephGWoods/bloch/issues"
+
+[tool.setuptools]
+py-modules = ["bloch"]
+package-dir = {"" = "python"}
+
+[tool.pytest.ini_options]
+pythonpath = ["python"]
