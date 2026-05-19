@@ -1,16 +1,14 @@
 # Bloch Simulator
 
-Simulate MRI spin dynamics in Python or MATLAB
+Simulate MR spin dynamics in Python or MATLAB
 
 <table>
   <tr>
-    <td align="center">
-      <img src="examples/media/bloch_hard_90deg.gif" width="400"><br>
-      <em>90° hard pulse</em>
+    <td align="left">
+      <img src="examples/media/bloch_hard_90deg.gif" width="350"><br>
     </td>
-    <td align="center">
-      <img src="examples/media/bloch_sinc_90deg.gif" width="480"><br>
-      <em>90° Sinc pulse</em>
+    <td align="right">
+      <img src="examples/media/bloch_sinc_90deg.gif" width="420"><br>
     </td>
   </tr>
 </table>
