@@ -11,14 +11,14 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.8"
-dependencies = ["numpy"]
+dependencies = ["numpy", "matplotlib"]
 
 [project.urls]
 Source = "https://github.com/JosephGWoods/bloch"
 Issues = "https://github.com/JosephGWoods/bloch/issues"
 
 [tool.setuptools]
-py-modules = ["bloch"]
+py-modules = ["bloch", "bloch_plot"]
 package-dir = {"" = "python"}
 
 [tool.pytest.ini_options]
