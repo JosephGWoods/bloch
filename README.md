@@ -5,10 +5,10 @@ Simulate MR spin dynamics in Python or MATLAB
 <table>
   <tr>
     <td align="left">
-      <img src="examples/media/bloch_hard_90deg.gif" width="350"><br>
+      <img src="examples/media/bloch_hard_90deg.gif" width="200"><br>
     </td>
     <td align="right">
-      <img src="examples/media/bloch_sinc_90deg.gif" width="420"><br>
+      <img src="examples/media/bloch_sinc_90deg.gif" width="500"><br>
     </td>
   </tr>
 </table>
@@ -81,7 +81,11 @@ slthk  = 5e-3                                          # slice thickness (m)
 TBWP   = 8                                             # time-bandwidth product
 b1     = np.sinc(np.linspace(-TBWP/2, TBWP/2, ntime))  # normalized sinc pulse
 b1    *= flip / (2 * np.pi * np.sum(b1) * dt)          # B1+ waveform (Hz)
-gr     = np.ones(ntime) * TBWP / dur / slthk           # gradient waveform (Hz/m)
+b1     = np.concatenate([b1, np.zeros(ntime//2)])      # pad RF with zeros during gradient rewinder
+gz     = np.concatenate(
+            [np.ones(ntime)    *  TBWP / dur / slthk,  # slice-selective gradient waveform (Hz/m)
+             np.ones(ntime//2) * -TBWP / dur / slthk]  # slice rewinding gradient waveform (Hz/m)
+        )
 dp     = np.linspace(-slthk, slthk, 201)               # positions (m)
 
 mx, my, mz = bloch(b1, gr, dt, dp=dp)
@@ -221,7 +225,8 @@ bloch/
 │   ├── bloch_mex.c       # MEX wrapper
 │   └── bloch.m           # MATLAB wrapper
 ├── python/
-│   └── bloch.py          # Python ctypes wrapper
+│   ├── bloch.py          # Python ctypes wrapper
+│   └── bloch_plot.py     # Plotting functions
 ├── tests/
 │   ├── test_bloch.m      # Matlab unit tests
 │   └── test_bloch.py     # Python unit tests
