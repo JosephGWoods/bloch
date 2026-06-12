@@ -23,11 +23,11 @@ import numpy as np
 from bloch import bloch
 
 dur    = 1e-3                             # total duration (s)
-dt     = 10e-6                            # 10 us per time step
-ntime  = int(dur / dt)                    # number of time steps
-flip   = np.pi / 2                        # 90° flip angle
+dt     = 10e-6                            # 10 us per time step (s)
+ntime  = round(dur / dt)                  # number of time steps
+flip   = np.pi / 2                        # 90° flip angle (rad)
 b1_amp = flip / (2 * np.pi * ntime * dt)  # B1+ amplitude (Hz)
-b1     = b1_amp * np.ones(ntime)          # B1+ waveform
+b1     = b1_amp * np.ones(ntime)          # B1+ waveform (Hz)
 gr     = np.zeros(ntime)                  # gradient waveform (Hz/m)
 
 mx, my, mz = bloch(b1, gr, dt)  # Run the Bloch simulation
@@ -74,9 +74,9 @@ t2 = 0.1; % s
 
 ```python
 dur    = 2e-3                                          # pulse duration (s)
-dt     = 10e-6                                         # 10 us per time step
-ntime  = int(dur / dt)                                 # number of time steps
-flip   = np.pi / 2                                     # 90° flip angle
+dt     = 10e-6                                         # 10 us per time step (s)
+ntime  = round(dur / dt)                               # number of time steps
+flip   = np.pi / 2                                     # 90° flip angle (rad)
 slthk  = 5e-3                                          # slice thickness (m)
 TBWP   = 8                                             # time-bandwidth product
 b1     = np.sinc(np.linspace(-TBWP/2, TBWP/2, ntime))  # normalized sinc pulse

@@ -5,7 +5,7 @@ from bloch_plot import animate_bloch, plot_bloch
 # Simple hard pulse example: 90° flip at on-resonance, single position
 dur    = 1e-3                             # pulse duration (s)
 dt     = 10e-6                            # 10 us per time step
-ntime  = int(dur / dt)                    # number of time steps
+ntime  = round(dur / dt)                  # number of time steps
 flip   = np.pi / 2                        # 90° flip angle
 b1_amp = flip / (2 * np.pi * ntime * dt)  # B1+ amplitude (Hz)
 b1     = b1_amp * np.ones(ntime)          # B1+ waveform (Hz)
@@ -23,7 +23,7 @@ animate_bloch(mx, my, mz, dt=dt,
 # Slice-selective windowed sinc pulse: animated profile and static endpoint
 dur    = 2e-3                                              # pulse duration (s)
 dt     = 10e-6                                             # 10 us per time step
-ntime  = int(dur / dt)                                     # number of time steps
+ntime  = round(dur / dt)                                   # number of time steps
 flip   = np.pi / 2                                         # 90° flip angle
 slthk  = 5e-3                                              # slice thickness (m)
 TBWP   = 8                                                 # time-bandwidth product
