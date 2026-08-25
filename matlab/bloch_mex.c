@@ -8,14 +8,18 @@
 /* CTR */
 /* JGW updated to do{} while(0) form for robustness */
 /* Debugging macro. Use like printf, but only prints if debugflag is true. */
-#define DEBUG_printf( ... ) \
-do { if (debugflag) mexPrintf(__VA_ARGS__); } while(0)
-/* (The (void)0 gives an error if DEBUG_printf is missing a terminating ;. */
+#ifdef DEBUG
+    #define DEBUG_printf( ... ) \
+    do { if (debugflag) mexPrintf(__VA_ARGS__); } while(0)
+#else
+    #define DEBUG_printf( ... ) \
+    do { } while(0)
+#endif
 static bool debugflag = false;
 /* End CTR. */
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
-/* bloch(b1,grad,dt,t1,t2,df,dxyz,dvxyz,mode,mx,my,mz,spoiled,offset) */
+/* bloch(b1,grad,dt,t1,t2,df,dxyz,dvxyz,mode,mx,my,mz,spoil) */
 {
     double *b1r;	   /* Real-part of B1 field             */
     double *b1i;	   /* Imag-part of B1 field             */
@@ -71,6 +75,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     int dyvaflag;     /* 1 if dyv was allocated.            */
     int dzvaflag;     /* 1 if dzv was allocated.            */
     int noutdim;      /* Number of output matrix dimensions */
+    int nmxin;        /* Number of input magnetization points. */
+    int nmyin;        /* Number of input magnetization points. */
+    int nmzin;        /* Number of input magnetization points. */
     
     /* CTR: ERROR CHECKING. Test number of inputs. */
     
@@ -99,7 +106,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
                     mexPrintf("GAMMA = %g.\n", GAMMA );
                 } else {
                     double *gamma_return;
-                    
                     plhs[0] = mxCreateDoubleMatrix(1,1,mxREAL);
                     gamma_return = mxGetPr(plhs[0]);
                     *gamma_return = GAMMA;
@@ -128,12 +134,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     }
     /* End CTR. */
     
-    #ifdef DEBUG
-        DEBUG_printf("----------------------------------------------------------\n");
-        DEBUG_printf("3D-position, 1D-frequency, and 3D-velocity Bloch Simulator\n");
-        DEBUG_printf("with linear gradients.                                    \n");
-        DEBUG_printf("----------------------------------------------------------\n\n");
-    #endif
+    DEBUG_printf("---------------------------------------------------------------------------------\n");
+    DEBUG_printf("3D-position, 1D-frequency, and 3D-velocity Bloch Simulator with linear gradients.\n");
+    DEBUG_printf("---------------------------------------------------------------------------------\n\n");
     
     ntime = mxGetM(prhs[0]) * mxGetN(prhs[0]);	/* Number of Time, RF, and Grad points */
     
@@ -147,11 +150,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         b1r = mxGetPr(prhs[0]);
         b1i = (double *)malloc(ntime * sizeof(double));
         for (count=0; count < ntime; count++)
-            b1i[count]=0.0;
+            b1i[count] = 0.0;
     }
-    #ifdef DEBUG
-        DEBUG_printf("%d B1 points.\n",ntime);
-    #endif
+    DEBUG_printf("%d B1 points.\n",ntime);
+
     if (b1r == NULL)
         mexErrMsgIdAndTxt("bloch:BadPosition","B1 is not allocated.");
         
@@ -159,42 +161,35 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     ngrad = mxGetM(prhs[1]) * mxGetN(prhs[1]);	/* Number of Time, RF, and Grad points */
     gx = mxGetPr(prhs[1]); /* X gradient is first N points. */
-    #ifdef DEBUG
-        DEBUG_printf("X gradient is set.");
-        DEBUG_printf(" gcount = %i.\n",gcount);
-    #endif
+    DEBUG_printf("X gradient is set.");
+    DEBUG_printf(" gcount = %i.\n",gcount);
             
     if (ngrad < ++gcount*ntime) {   /* Need to allocate Y gradient. */
-        #ifdef DEBUG
-            DEBUG_printf("Assuming 1-dimensional gradient.\n");
-        #endif
+        DEBUG_printf("Assuming 1-dimensional gradient.\n");
         gy = (double *)malloc(ntime * sizeof(double));
-        gyaflag=1;
-        for (count=0; count<ntime; count++) { gy[count]=0.0; }
+        gyaflag = 1;
+        for (count=0; count<ntime; count++)
+            gy[count] = 0.0;
     } else {
-        #ifdef DEBUG
-            DEBUG_printf("Y gradient is set.");
-            DEBUG_printf(" gcount = %i.\n",gcount);
-        #endif
+        DEBUG_printf("Y gradient is set.");
+        DEBUG_printf(" gcount = %i.\n",gcount);
         gy = gx + (gcount-1)*ntime;	/* Assign from Nx3 input array. */
     }
     
     if (ngrad < ++gcount*ntime) {  /* Need to allocate Z gradient. */
         gz = (double *)malloc(ntime * sizeof(double));
-        gzaflag=1;
-        for (count=0; count<ntime; count++) { gz[count]=0.0; }
+        gzaflag = 1;
+        for (count=0; count<ntime; count++)
+            gz[count] = 0.0;
     } else {
-        #ifdef DEBUG
-            DEBUG_printf("Z gradient is set.");
-            DEBUG_printf(" gcount = %i.\n",gcount);
-        #endif
+        DEBUG_printf("Z gradient is set.");
+        DEBUG_printf(" gcount = %i.\n",gcount);
         gz = gx + (gcount-1)*ntime; /* Assign from Nx3 input array. */
     }
     
     /* Warning if Gradient length is not an integer multiple of the RF length. */
-    #ifdef DEBUG
-        DEBUG_printf("%d Gradient Points (total).\n",ngrad);
-    #endif
+    DEBUG_printf("%d Gradient Points (total).\n",ngrad);
+
     /* if ( (ngrad != ntime) && (ngrad != 2*ntime) && (ngrad != 3*ntime) ) */
     if ( (ngrad % ntime) > 0 )
         mexErrMsgIdAndTxt("bloch:BadGradientLength","Gradient length differs from B1 length.");
@@ -222,17 +217,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         tp = (double *)malloc(ntime * sizeof(double));
         tstep = *(mxGetPr(prhs[2]));
         for (count =0; count < ntime; count++)
-            tp[count]=tstep;
+            tp[count] = tstep;
         
     } else if (mxGetM(prhs[2]) * mxGetN(prhs[2]) != ntime)
         mexErrMsgIdAndTxt("bloch:BadB1Length","Time-point length differs from B1 length.");
     
-    else {
+    else { /* === Case 2 or 3 === */
         tp = mxGetPr(prhs[2]);
         ti = (double *)malloc(ntime * sizeof(double));
         if (( times2intervals( tp, ti, ntime ))) {
             DEBUG_printf("Times are monotonically increasing.\n");
-            tp = ti;
+            tp = ti; /* Case 3 */
         }
     }
     
@@ -245,18 +240,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     t1 = *mxGetPr(prhs[3]);
     t2 = *mxGetPr(prhs[4]);
     
-    #ifdef DEBUG
-        DEBUG_printf("t1 = %d \n",t1);
-        DEBUG_printf("t2 = %d \n",t2);
-    #endif
+    DEBUG_printf("t1 = %d \n",t1);
+    DEBUG_printf("t2 = %d \n",t2);
         
     /* === Frequency Points ===== */
     df = mxGetPr(prhs[5]);
     nf = mxGetM(prhs[5]) * mxGetN(prhs[5]);
     
-    #ifdef DEBUG
-        DEBUG_printf("%d Frequency points.\n",nf);
-    #endif
+    DEBUG_printf("%d Frequency points.\n",nf);
     if (df == NULL)
         mexErrMsgIdAndTxt("bloch:BadPosition","df is not allocated.");
 
@@ -264,53 +255,43 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     nposM = mxGetM(prhs[6]);
     nposN = mxGetN(prhs[6]);
     
-    #ifdef DEBUG
-        DEBUG_printf("Position vector is %d x %d.\n",nposM,nposN);
-    #endif
+    DEBUG_printf("Position vector is %d x %d.\n",nposM,nposN);
     
     if (nposN==3) { /* Assume 3 position dimensions given */
         npos = nposM;
-        #ifdef DEBUG
-            DEBUG_printf("Assuming %d 3-Dimensional Positions.\n",npos);
-        #endif
+        DEBUG_printf("Assuming %d 3-Dimensional Positions.\n",npos);
         dx = mxGetPr(prhs[6]);
         dy = dx + npos;
         dz = dy + npos;
 
     } else if (nposN==2) { /* Assume only 2 position dimensions given */
         npos = nposM;
-        #ifdef DEBUG
-            DEBUG_printf("Assuming %d 2-Dimensional Positions.\n",npos);
-        #endif
+        DEBUG_printf("Assuming %d 2-Dimensional Positions.\n",npos);
         dx = mxGetPr(prhs[6]);
         dy = dx + npos;
         dz = (double *)malloc(npos * sizeof(double));
-        dzaflag=1;
+        dzaflag = 1;
         for (count=0; count < npos; count++)
-            dz[count]=0.0;
+            dz[count] = 0.0;
     
     } else { /* Either 1xN, Nx1 or something random.  In all these
      * cases we assume that 1 position is given, because it
      * is too much work to try to figure out anything else! */
         npos = nposM * nposN;
-        #ifdef DEBUG
-            DEBUG_printf("Assuming %d 1-Dimensional Positions.\n",npos);
-        #endif
+        DEBUG_printf("Assuming %d 1-Dimensional Positions.\n",npos);
         dx = mxGetPr(prhs[6]);
         dy = (double *)malloc(npos * sizeof(double));
         dz = (double *)malloc(npos * sizeof(double));
-        dyaflag=1;
-        dzaflag=1;
+        dyaflag = 1;
+        dzaflag = 1;
         for (count=0; count < npos; count++) {
-            dy[count]=0.0;
-            dz[count]=0.0;
+            dy[count] = 0.0;
+            dz[count] = 0.0;
         }
-        #ifdef DEBUG
-            if ((nposM !=1) && (nposN!=1)) {
-                DEBUG_printf("Position vector should be 1xN, Nx1, Nx2 or Nx3.\n");
-                DEBUG_printf(" -> Assuming 1 position dimension is given.\n");
-            }
-        #endif
+        if ((nposM !=1) && (nposN!=1)) {
+            DEBUG_printf("Position vector should be 1xN, Nx1, Nx2 or Nx3.\n");
+            DEBUG_printf(" -> Assuming 1 position dimension is given.\n");
+        }
     }
     if (dx == NULL)
         mexErrMsgIdAndTxt("bloch:BadPosition","dx is not allocated.");
@@ -324,49 +305,39 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     /* === Velocity Points ===== */
     nvelM = mxGetM(prhs[7]);
     nvelN = mxGetN(prhs[7]);
-    #ifdef DEBUG
-        DEBUG_printf("Velocity vector is %d x %d.\n",nvelM,nvelN);
-	#endif
+    DEBUG_printf("Velocity vector is %d x %d.\n",nvelM,nvelN);
 
     if (nvelN==3) {         /* Assume 3 velocity dimensions given */
         nvel = nvelM;
-        #ifdef DEBUG
-            DEBUG_printf("Assuming %d 3-Dimensional Velocities.\n",nvel);
-        #endif
+        DEBUG_printf("Assuming %d 3-Dimensional Velocities.\n",nvel);
         dxv = mxGetPr(prhs[7]);
         dyv = dxv + nvel;
         dzv = dyv + nvel;
-    } else if (nvelN==2) {	/* Assume only 2 velocity dimensions given */
+    } else if (nvelN == 2) {	/* Assume only 2 velocity dimensions given */
         nvel = nvelM;
-        #ifdef DEBUG
-            DEBUG_printf("Assuming %d 2-Dimensional Velocities.\n",nvel);
-        #endif
+        DEBUG_printf("Assuming %d 2-Dimensional Velocities.\n",nvel);
         dxv = mxGetPr(prhs[7]);
         dyv = dxv + nvel;
         dzv = (double *)malloc(nvel * sizeof(double));
-        dzvaflag=1;
+        dzvaflag = 1;
         for (count=0; count < nvel; count++)
-            dzv[count]=0.0;
+            dzv[count] = 0.0;
     } else {               	/* Assume only 1 velocity dimension given */
         nvel = nvelM * nvelN;
-        #ifdef DEBUG
-            DEBUG_printf("Assuming %d 1-Dimensional Velocities.\n",npos);
-        #endif
+        DEBUG_printf("Assuming %d 1-Dimensional Velocities.\n",nvel);
         dxv = mxGetPr(prhs[7]);
         dyv = (double *)malloc(nvel * sizeof(double));
         dzv = (double *)malloc(nvel * sizeof(double));
-        dyvaflag=1;
-        dzvaflag=1;
+        dyvaflag = 1;
+        dzvaflag = 1;
         for (count=0; count < nvel; count++) {
-            dyv[count]=0.0;
-            dzv[count]=0.0;
+            dyv[count] = 0.0;
+            dzv[count] = 0.0;
         }
-        #ifdef DEBUG
-            if ((nvelM !=1) && (nvelN!=1)) {
-                DEBUG_printf("Velocity vector should be 1xN, Nx1, Nx2 or Nx3.\n");
-                DEBUG_printf(" -> Assuming 1 velocity dimension is given.\n");
-            }
-        #endif
+        if ((nvelM !=1) && (nvelN!=1)) {
+            DEBUG_printf("Velocity vector should be 1xN, Nx1, Nx2 or Nx3.\n");
+            DEBUG_printf(" -> Assuming 1 velocity dimension is given.\n");
+        }
     }
     if (dxv == NULL)
         mexErrMsgIdAndTxt("bloch:BadVelocity","dxv is not allocated.");
@@ -383,19 +354,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     else
         md = 0;
 
-    if (md == 1)
+    if (md == 1) {
         ntout = ntime;		/* Include time points.	*/
-    else
+        DEBUG_printf("Simulation over Time.\n");
+    } else {
         ntout = 1;
+        DEBUG_printf("Simulation to Endpoint.\n");
+    }
 
     ntnfnposnvel = ntout*nfnposnvel;
-
-    #ifdef DEBUG
-        if (md == 0)
-            DEBUG_printf("Simulation to Endpoint.\n");
-        else
-            DEBUG_printf("Simulation over Time.\n");
-    #endif
 
     /* ===== Allocate Output Magnetization vectors arrays.	*/
     plhs[0] = mxCreateDoubleMatrix(ntnfnposnvel,1,mxREAL);	/* Mx, output. */
@@ -411,32 +378,41 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     mzout = mz;
 
     /* ===== If Initial Magnetization is given... */
-    if ( (nrhs > 11) &&
-            (mxGetM(prhs[9])  * mxGetN(prhs[9])  == nfnposnvel) &&
-            (mxGetM(prhs[10]) * mxGetN(prhs[10]) == nfnposnvel) &&
-            (mxGetM(prhs[11]) * mxGetN(prhs[11]) == nfnposnvel)  ) {
+    if (nrhs > 11) {
+        nmxin = mxGetM(prhs[9])  * mxGetN(prhs[9]);
+        nmyin = mxGetM(prhs[10]) * mxGetN(prhs[10]);
+        nmzin = mxGetM(prhs[11]) * mxGetN(prhs[11]);
+
         /* Set output magnetization to that passed.
          * If multiple time points, then just the first is set. */
-
-        #ifdef DEBUG
-            DEBUG_printf("Using Specified Initial Magnetization.\n");
-        #endif
-
+        DEBUG_printf("Using Specified Initial Magnetization.\n");
         mxin = mxGetPr(prhs[9]);
         myin = mxGetPr(prhs[10]);
         mzin = mxGetPr(prhs[11]);
-        for (count=0; count<nfnposnvel; count++) {
-            mxout[count*ntout] = mxin[count];
-            myout[count*ntout] = myin[count];
-            mzout[count*ntout] = mzin[count];
+
+        if ( (nmxin == nfnposnvel) &&
+             (nmyin == nfnposnvel) &&
+             (nmzin == nfnposnvel) ) {
+            for (count=0; count<nfnposnvel; count++) {
+                mxout[count*ntout] = mxin[count];
+                myout[count*ntout] = myin[count];
+                mzout[count*ntout] = mzin[count];
+            }
+        } else if ( (nmxin == 1) &&
+                    (nmyin == 1) &&
+                    (nmzin == 1) ) {
+            for (count=0; count<nfnposnvel; count++) {
+                mxout[count*ntout] = mxin[0];
+                myout[count*ntout] = myin[0];
+                mzout[count*ntout] = mzin[0];
+            }
+        } else {
+            mexErrMsgIdAndTxt("bloch:BadInitialMagnetization",
+                "Initial magnetization dimensions are not compatible.\nMust be either 1x1 or Npositions x Nfreq x Nvelocities.");
         }
     } else {
-        #ifdef DEBUG
-            if (nrhs > 11) { /* Magnetization given, but wrong size! */
-                mexErrMsgIdAndTxt("bloch:BadMagnetization","Initial magnetization passed, but not Npositions x Nfreq x Nvelocities.");
-            }
-            DEBUG_printf(" --> Using [0; 0; 1] for initial magnetization.\n");
-        #endif
+        DEBUG_printf("Initial magnetization not passed.\n");
+        DEBUG_printf(" --> Using [0; 0; 1] for initial magnetization.\n");
         for (count=0; count<nfnposnvel; count++) {
             mxout[count*ntout] = 0;	/* Set magnetization to Equilibrium */
             myout[count*ntout] = 0;
@@ -445,26 +421,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     }
 
     /* WTC: Spoiler vector */
-    if ((nrhs > 12) && (mxGetM(prhs[12]) * mxGetN(prhs[12]) == ntime)) {
-        spoil = mxGetPr(prhs[12]);
-        DEBUG_printf("Spoiler length same as B1 length.\n");
-    } else if ((nrhs > 12) && (mxGetM(prhs[12]) * mxGetN(prhs[12]) != ntime)) {
-        mexErrMsgIdAndTxt("bloch:BadSpoiler","Spoiler length differs from B1 length.");
+    if (nrhs > 12) {
+        if((mxGetM(prhs[12]) * mxGetN(prhs[12]) == ntime)) {
+            spoil = mxGetPr(prhs[12]);
+            DEBUG_printf("Spoiler length same as B1 length.\n");
+        } else if (mxGetM(prhs[12]) * mxGetN(prhs[12]) != ntime) {
+            mexErrMsgIdAndTxt("bloch:BadSpoiler","Spoiler length differs from B1 length.");
+        }
     } else {
-        #ifdef DEBUG
-            DEBUG_printf("Assigning spoiler vector.\n");
-        #endif
+        DEBUG_printf("Assigning default spoiler vector (no spoiling).\n");
         spoil = (double *)malloc(ntime * sizeof(double));
         spoilflag = 1;
         for (count=0; count < ntime; count++)
-            spoil[count]=0.0;
+            spoil[count] = 0.0;
     }
 
 
     /* ======= Do The Simulation! ====== */
-    #ifdef DEBUG
-        DEBUG_printf("Calling blochsimfz() function.\n");
-    #endif
+    DEBUG_printf("Calling blochsimfz() function.\n");
 
     blochsimfz(b1r,b1i,gx,gy,gz,tp,ntime,t1,t2,df,nf,dx,dy,dz,npos,dxv,dyv,dzv,nvel,mx,my,mz,md,spoil);
 
