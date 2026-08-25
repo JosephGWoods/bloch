@@ -138,12 +138,16 @@ def bloch(b1, gr, tp,
     gx = np.ascontiguousarray(gr[:, 0])
     gy = np.ascontiguousarray(gr[:, 1] if ncols >= 2 else np.zeros(ntime))
     gz = np.ascontiguousarray(gr[:, 2] if ncols >= 3 else np.zeros(ntime))
+    if np.size(gr, 0) != ntime:
+        raise ValueError("Gradient array must have the same number of rows as b1 (ntime).")
 
     # --- time steps ---
     tp = np.asarray(tp, dtype=np.float64).ravel()
     if tp.size == 1:
         tp = np.full(ntime, tp[0])
     tp = np.ascontiguousarray(tp)
+    if tp.size != ntime:
+        raise ValueError("Time step array must have length equal to ntime or be a scalar.")
 
     # --- off-resonance frequencies ---
     df = np.ascontiguousarray(np.asarray(df, dtype=np.float64).ravel())
@@ -173,6 +177,8 @@ def bloch(b1, gr, tp,
     if spoil is None:
         spoil = np.zeros(ntime, dtype=np.float64)
     spoil = np.ascontiguousarray(np.asarray(spoil, dtype=np.float64).ravel())
+    if spoil.size != ntime:
+        raise ValueError("Spoil array must have length equal to ntime.")
 
     # --- allocate output arrays ---
     # C inner loop order: vel → freq → pos, with ntout values per combination.
@@ -185,10 +191,21 @@ def bloch(b1, gr, tp,
     # Set initial magnetisation.
     # blochsim() reads *mx, *my, *mz before the time loop, so write the
     # starting value into element [idx * ntout] of each flat output array.
+    # If the user provides a single value for mx0, my0, or mz0, broadcast it to all combinations of vel/freq/pos.
     if mx0 is not None or my0 is not None or mz0 is not None:
         _mx0 = np.asarray(mx0 if mx0 is not None else np.zeros((nvel, nfreq, npos)), dtype=np.float64).ravel()
         _my0 = np.asarray(my0 if my0 is not None else np.zeros((nvel, nfreq, npos)), dtype=np.float64).ravel()
         _mz0 = np.asarray(mz0 if mz0 is not None else np.ones( (nvel, nfreq, npos)), dtype=np.float64).ravel()
+        if _mx0.size == 1:
+            _mx0 = np.full(nvel * nfreq * npos, _mx0[0])
+        if _my0.size == 1:
+            _my0 = np.full(nvel * nfreq * npos, _my0[0])
+        if _mz0.size == 1:
+            _mz0 = np.full(nvel * nfreq * npos, _mz0[0])
+        if _mx0.size != nvel * nfreq * npos or \
+           _my0.size != nvel * nfreq * npos or \
+           _mz0.size != nvel * nfreq * npos:
+            raise ValueError("Initial magnetisation arrays must have shape (nvel, nfreq, npos) or be scalars.")
         for idx in range(nvel * nfreq * npos):
             mx[idx * ntout] = _mx0[idx]
             my[idx * ntout] = _my0[idx]
