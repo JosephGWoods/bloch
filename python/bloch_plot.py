@@ -139,13 +139,14 @@ def _make_profile_axes(fig, xlabel, title, x, subplot_spec=None):
 _GAMMA = 42.576e6  # Hz/T
 
 
-def _make_waveform_axes(fig, subplot_spec, b1, g, dt, b1_units='uT', g_units='mT/m'):
+def _make_waveform_axes(fig, subplot_spec, b1, g, dt, b1_units='uT', g_units='mT/m', b1_mode='mag'):
     """
     Create stacked B1 and/or gradient axes inside *subplot_spec*.
     Returns (wave_axes_list, t_array).
 
     b1_units : 'Hz' | 'uT' | 'μT'  (default 'uT')
     g_units  : 'Hz/m' | 'mT/m'     (default 'mT/m')
+    b1_mode  : 'mag' | 'mag_phase' | 'real_imag'  (default 'mag')
     """
     g_arr = None
     if g is not None:
@@ -166,7 +167,8 @@ def _make_waveform_axes(fig, subplot_spec, b1, g, dt, b1_units='uT', g_units='mT
         t = np.arange(ntime, dtype=float)
         t_label = 'Sample'
 
-    n_panels = (b1 is not None) + (g_arr is not None)
+    n_b1_panels = (2 if b1_mode == 'mag_phase' else 1) if b1 is not None else 0
+    n_panels = n_b1_panels + (g_arr is not None)
     gs_w = gridspec.GridSpecFromSubplotSpec(n_panels, 1,
                                             subplot_spec=subplot_spec,
                                             hspace=0.15)
@@ -174,23 +176,51 @@ def _make_waveform_axes(fig, subplot_spec, b1, g, dt, b1_units='uT', g_units='mT
     ax_first = None
 
     if b1 is not None:
+        b1_complex = np.asarray(b1, dtype=complex)
         if b1_units in ('uT', 'μT'):
-            b1_plot = np.abs(np.asarray(b1, dtype=complex)) / _GAMMA * 1e6  # Hz → µT
-            b1_ylabel = '|B1| (µT)'
+            scale, unit_label = 1 / _GAMMA * 1e6, 'µT'
         else:  # 'Hz'
-            b1_plot = np.abs(np.asarray(b1, dtype=complex))
-            b1_ylabel = '|B1| (Hz)'
-        ax_b1 = fig.add_subplot(gs_w[0])
-        ax_b1.plot(t, b1_plot, color='C3', lw=1.5)
-        ax_b1.set_ylabel(b1_ylabel)
-        ax_b1.set_xlim(t[0], t[-1])
-        ax_b1.axhline(0, color='grey', lw=0.5, ls='--')
+            scale, unit_label = 1.0, 'Hz'
+
+        if b1_mode == 'mag_phase':
+            ax_mag = fig.add_subplot(gs_w[0])
+            ax_mag.plot(t, np.abs(b1_complex) * scale, color='C3', lw=1.5)
+            ax_mag.set_ylabel(f'|B1| ({unit_label})')
+            ax_mag.set_xlim(t[0], t[-1])
+            ax_mag.axhline(0, color='grey', lw=0.5, ls='--')
+            ax_mag.tick_params(labelbottom=False)
+            axes.append(ax_mag)
+            ax_first = ax_mag
+
+            ax_phase = fig.add_subplot(gs_w[1], sharex=ax_first)
+            ax_phase.plot(t, np.angle(b1_complex), color='C4', lw=1.5)
+            ax_phase.set_ylabel('∠B1 (rad)')
+            ax_phase.set_ylim(-np.pi, np.pi)
+            ax_phase.axhline(0, color='grey', lw=0.5, ls='--')
+            axes.append(ax_phase)
+        elif b1_mode == 'real_imag':
+            ax_b1 = fig.add_subplot(gs_w[0])
+            ax_b1.plot(t, b1_complex.real * scale, color='C3', lw=1.5, label='Re')
+            ax_b1.plot(t, b1_complex.imag * scale, color='C4', lw=1.5, label='Im')
+            ax_b1.set_ylabel(f'B1 ({unit_label})')
+            ax_b1.set_xlim(t[0], t[-1])
+            ax_b1.axhline(0, color='grey', lw=0.5, ls='--')
+            ax_b1.legend(fontsize=8, loc='upper right', framealpha=0.5)
+            axes.append(ax_b1)
+            ax_first = ax_b1
+        else:  # 'mag'
+            ax_b1 = fig.add_subplot(gs_w[0])
+            ax_b1.plot(t, np.abs(b1_complex) * scale, color='C3', lw=1.5)
+            ax_b1.set_ylabel(f'|B1| ({unit_label})')
+            ax_b1.set_xlim(t[0], t[-1])
+            ax_b1.axhline(0, color='grey', lw=0.5, ls='--')
+            axes.append(ax_b1)
+            ax_first = ax_b1
+
         if g_arr is None:
-            ax_b1.set_xlabel(t_label)
+            axes[-1].set_xlabel(t_label)
         else:
-            ax_b1.tick_params(labelbottom=False)
-        axes.append(ax_b1)
-        ax_first = ax_b1
+            axes[-1].tick_params(labelbottom=False)
 
     if g_arr is not None:
         if g_units == 'mT/m':
@@ -226,7 +256,7 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
                   xlabel=None, title=None, filepath=None,
                   fps=30, dpi=200,
                   trace=True, trace_len=None, unit_sphere=True,
-                  b1=None, g=None, b1_units='uT', g_units='mT/m'):
+                  b1=None, g=None, b1_units='uT', g_units='mT/m', b1_mode='mag'):
     """
     Animate a magnetisation trajectory (mode=1 output of bloch()).
 
@@ -277,6 +307,10 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
         Display units for the B1 waveform panel. Default ``'uT'``.
     g_units : {'Hz/m', 'mT/m'}, optional
         Display units for the gradient waveform panel. Default ``'mT/m'``.
+    b1_mode : {'mag', 'mag_phase', 'real_imag'}, optional
+        How to display the B1 waveform: magnitude only, magnitude and
+        phase (stacked panels), or real and imaginary parts (overlaid on
+        one panel). Default ``'mag'``.
 
     Returns
     -------
@@ -298,14 +332,16 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
                                 xlabel=xlabel or default_xlabel,
                                 filepath=filepath,
                                 title=title, fps=fps, dpi=dpi,
-                                b1=b1, g=g, b1_units=b1_units, g_units=g_units)
+                                b1=b1, g=g, b1_units=b1_units, g_units=g_units,
+                                b1_mode=b1_mode)
     else:
         return _animate_sphere(mx.ravel(), my.ravel(), mz.ravel(), dt=dt,
                                title=title, filepath=filepath,
                                fps=fps, dpi=dpi,
                                trace=trace, trace_len=trace_len,
                                unit_sphere=unit_sphere,
-                               b1=b1, g=g, b1_units=b1_units, g_units=g_units)
+                               b1=b1, g=g, b1_units=b1_units, g_units=g_units,
+                               b1_mode=b1_mode)
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +350,8 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
 
 def plot_bloch(mx, my, mz, dp=None, df=None,
                xlabel=None, title=None, filepath=None,
-               dt=None, dpi=200, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m'):
+               dt=None, dpi=200, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m',
+               b1_mode='mag'):
     """
     Static plot of magnetisation (mode=0 output of bloch()).
 
@@ -353,6 +390,10 @@ def plot_bloch(mx, my, mz, dp=None, df=None,
         Display units for the B1 waveform panel. Default ``'uT'``.
     g_units : {'Hz/m', 'mT/m'}, optional
         Display units for the gradient waveform panel. Default ``'mT/m'``.
+    b1_mode : {'mag', 'mag_phase', 'real_imag'}, optional
+        How to display the B1 waveform: magnitude only, magnitude and
+        phase (stacked panels), or real and imaginary parts (overlaid on
+        one panel). Default ``'mag'``.
     dt : float, optional
         Time step duration (s) for labeling the time axis of the waveform panels.
         Only needed if *b1* or *g* is provided. Default None (samples on x-axis).
@@ -374,9 +415,11 @@ def plot_bloch(mx, my, mz, dp=None, df=None,
     if x is not None:
         fig = _plot_profile(mx, my, mz, x, dt=dt,
                              xlabel=xlabel or default_xlabel,
-                             title=title, b1=b1, g=g, b1_units=b1_units, g_units=g_units)
+                             title=title, b1=b1, g=g, b1_units=b1_units, g_units=g_units,
+                             b1_mode=b1_mode)
     else:
-        fig = _plot_sphere_static(mx[0], my[0], mz[0], title=title, unit_sphere=unit_sphere, b1=b1, g=g, b1_units=b1_units, g_units=g_units)
+        fig = _plot_sphere_static(mx[0], my[0], mz[0], title=title, unit_sphere=unit_sphere, b1=b1, g=g, b1_units=b1_units, g_units=g_units,
+                                   b1_mode=b1_mode)
 
     if filepath is not None:
         fig.savefig(filepath, dpi=dpi)
@@ -390,7 +433,8 @@ def plot_bloch(mx, my, mz, dp=None, df=None,
 
 def _animate_sphere(mx, my, mz, dt,
                     title, filepath, fps, dpi,
-                    trace, trace_len, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m'):
+                    trace, trace_len, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m',
+                    b1_mode='mag'):
 
     ntime = len(mx)
     if trace_len is None:
@@ -400,7 +444,7 @@ def _animate_sphere(mx, my, mz, dt,
     if have_waves:
         fig = plt.figure(figsize=(10, 5))
         gs = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1, 1.5], wspace=0.05)
-        wave_axes, t_wave = _make_waveform_axes(fig, gs[0], b1, g, dt, b1_units=b1_units, g_units=g_units)
+        wave_axes, t_wave = _make_waveform_axes(fig, gs[0], b1, g, dt, b1_units=b1_units, g_units=g_units, b1_mode=b1_mode)
         if title and wave_axes:
             wave_axes[0].set_title(title)
         ax = _make_sphere_axes(fig, 'Magnetization', unit_sphere=unit_sphere, subplot_spec=gs[1])
@@ -448,13 +492,14 @@ def _animate_sphere(mx, my, mz, dt,
 # Internal: Bloch sphere static plot
 # ---------------------------------------------------------------------------
 
-def _plot_sphere_static(mx_val, my_val, mz_val, title, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m'):
+def _plot_sphere_static(mx_val, my_val, mz_val, title, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m',
+                         b1_mode='mag'):
 
     have_waves = (b1 is not None) or (g is not None)
     if have_waves:
         fig = plt.figure(figsize=(10, 5))
         gs = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1, 1.5], wspace=0.05)
-        wave_axes, _ = _make_waveform_axes(fig, gs[0], b1, g, dt=None, b1_units=b1_units, g_units=g_units)
+        wave_axes, _ = _make_waveform_axes(fig, gs[0], b1, g, dt=None, b1_units=b1_units, g_units=g_units, b1_mode=b1_mode)
         if title and wave_axes:
             wave_axes[0].set_title(title)
         ax = _make_sphere_axes(fig, 'Magnetization', unit_sphere=unit_sphere, subplot_spec=gs[1])
@@ -472,7 +517,8 @@ def _plot_sphere_static(mx_val, my_val, mz_val, title, unit_sphere=True, b1=None
 # ---------------------------------------------------------------------------
 
 def _animate_profile(mx, my, mz, x, dt,
-                     xlabel, filepath, title, fps, dpi, b1=None, g=None, b1_units='uT', g_units='mT/m'):
+                     xlabel, filepath, title, fps, dpi, b1=None, g=None, b1_units='uT', g_units='mT/m',
+                     b1_mode='mag'):
     # Ensure 2D: (n, ntime)
     mx = np.atleast_2d(mx)
     my = np.atleast_2d(my)
@@ -483,7 +529,7 @@ def _animate_profile(mx, my, mz, x, dt,
     if have_waves:
         fig = plt.figure(figsize=(12, 5))
         gs = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1, 1.5], wspace=0.3)
-        wave_axes, t_wave = _make_waveform_axes(fig, gs[0], b1, g, dt, b1_units=b1_units, g_units=g_units)
+        wave_axes, t_wave = _make_waveform_axes(fig, gs[0], b1, g, dt, b1_units=b1_units, g_units=g_units, b1_mode=b1_mode)
         if title and wave_axes:
             wave_axes[0].set_title(title)
         axs = _make_profile_axes(fig, xlabel, 'Magnetization', x, subplot_spec=gs[1])
@@ -526,12 +572,13 @@ def _animate_profile(mx, my, mz, x, dt,
 # Internal: static profile plot
 # ---------------------------------------------------------------------------
 
-def _plot_profile(mx, my, mz, x, dt, xlabel, title, b1=None, g=None, b1_units='uT', g_units='mT/m'):
+def _plot_profile(mx, my, mz, x, dt, xlabel, title, b1=None, g=None, b1_units='uT', g_units='mT/m',
+                   b1_mode='mag'):
     have_waves = (b1 is not None) or (g is not None)
     if have_waves:
         fig = plt.figure(figsize=(12, 5))
         gs = gridspec.GridSpec(1, 2, figure=fig, width_ratios=[1, 1.5], wspace=0.3)
-        wave_axes, _ = _make_waveform_axes(fig, gs[0], b1, g, dt=dt, b1_units=b1_units, g_units=g_units)
+        wave_axes, _ = _make_waveform_axes(fig, gs[0], b1, g, dt=dt, b1_units=b1_units, g_units=g_units, b1_mode=b1_mode)
         if title and wave_axes:
             wave_axes[0].set_title(title)
         axs = _make_profile_axes(fig, xlabel, 'Magnetization', x, subplot_spec=gs[1])
