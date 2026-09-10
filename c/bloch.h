@@ -41,6 +41,11 @@ void   blochsimfz(double *b1real, double *b1imag,
                   double *dxvel, double *dyvel, double *dzvel, int nvel,
                   double *mx, double *my, double *mz, int mode, double *spoil);
 
+/* ===== OpenMP thread control ===== */
+/* No-ops / return 1 when built without OpenMP support. */
+void   bloch_set_num_threads(int n);
+int    bloch_get_max_threads(void);
+
 #ifdef __cplusplus
 }
 #endif

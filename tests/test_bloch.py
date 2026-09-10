@@ -13,9 +13,8 @@ Rotation convention (derived from calcrotmat / Cayley-Klein):
   - df/gr    → rotation around z:  from Mx=+1:  Mx=cos(2π·f·T),
                                                 My=sin(2π·f·T)
 """
-import pytest
 import numpy as np
-
+import pytest
 from bloch import bloch
 
 # ---------------------------------------------------------------------------

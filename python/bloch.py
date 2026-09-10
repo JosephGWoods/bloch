@@ -17,10 +17,11 @@ Units (must be mutually consistent):
 Author: Joseph G. Woods
 """
 
-import numpy as np
 import ctypes
 import os
 import platform
+
+import numpy as np
 
 # ---------------------------------------------------------------------------
 # Load shared library
@@ -76,6 +77,33 @@ _lib.blochsimfz.argtypes = [
     _nd,             # spoil
 ]
 _lib.blochsimfz.restype = None
+
+_lib.bloch_set_num_threads.argtypes = [ctypes.c_int]
+_lib.bloch_set_num_threads.restype = None
+_lib.bloch_get_max_threads.argtypes = []
+_lib.bloch_get_max_threads.restype = ctypes.c_int
+
+
+def threads(n=None):
+    """
+    Get or set the number of OpenMP threads used by blochsimfz.
+
+    Parameters
+    ----------
+    n : int, optional
+        If given, sets the number of OpenMP threads (no effect if built
+        without OpenMP support). If omitted, returns the current thread
+        count that will be used by the next call to bloch().
+
+    Returns
+    -------
+    int or None
+        The current thread count when `n` is omitted; otherwise None.
+    """
+    if n is None:
+        return _lib.bloch_get_max_threads()
+    _lib.bloch_set_num_threads(int(n))
+    return None
 
 
 # ---------------------------------------------------------------------------

@@ -3,6 +3,9 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 
 /* Multiply 3x3 matrix by 3x1 vector. */
@@ -325,9 +328,8 @@ void blochsimfz(double *b1real, double *b1imag, double *xgrad, double *ygrad, do
         double *dxvel, double *dyvel, double *dzvel, int nvel,
         double *mx, double *my, double *mz, int mode, double *spoil)
 {
-    int count, pcount, fcount, vcount, totpoints, ntout;
-    int totcount = 0;
-    
+
+    int ntout;
     if (mode == 1)
         ntout = ntime;
     else
@@ -336,30 +338,33 @@ void blochsimfz(double *b1real, double *b1imag, double *xgrad, double *ygrad, do
     /* First calculate the E1 and E2 values at each time step. */
     double *e1 = (double *) malloc(ntime * sizeof(double));
     double *e2 = (double *) malloc(ntime * sizeof(double));
-    for (count=0; count<ntime; count++) {
+    for (int count=0; count<ntime; count++) {
         e1[count] = exp( -tsteps[count] / t1);
         e2[count] = exp( -tsteps[count] / t2);
     }
     
-    totpoints = npos*nfreq*nvel;
-    
-    for (vcount=0; vcount<nvel; vcount++) {
+    //int totpoints = npos*nfreq*nvel;
+    //int totcount = 0;
+
+    #pragma omp parallel for collapse(3) schedule(static)
+    for (int vcount=0; vcount<nvel; vcount++) {
         
-        for (fcount=0; fcount<nfreq; fcount++) {
+        for (int fcount=0; fcount<nfreq; fcount++) {
             
-            for (pcount=0; pcount<npos; pcount++) {
+            for (int pcount=0; pcount<npos; pcount++) {
+
+                int out_offset = (((vcount * nfreq) + fcount) * npos + pcount) * ntout;
+                double *mxp = mx + out_offset;
+                double *myp = my + out_offset;
+                double *mzp = mz + out_offset;
                 
                 blochsim(b1real, b1imag, xgrad, ygrad, zgrad,
                             tsteps, ntime, e1, e2, dfreq[fcount], dxpos[pcount], dypos[pcount], dzpos[pcount],
-                            dxvel[vcount], dyvel[vcount], dzvel[vcount], mx, my, mz, mode, spoil);
+                            dxvel[vcount], dyvel[vcount], dzvel[vcount], mxp, myp, mzp, mode, spoil);
                 
-                mx += ntout;
-                my += ntout;
-                mz += ntout;
-                
-                totcount++;
-                if ((totpoints > 40000) && ( ((10*totcount)/totpoints) > (10*(totcount-1)/totpoints) ))
-                { printf("%d%% Complete.\n",(100*totcount/totpoints)); }
+                //totcount++;
+                //if ((totpoints > 40000) && ( ((10*totcount)/totpoints) > (10*(totcount-1)/totpoints) ))
+                //{ printf("%d%% Complete.\n",(100*totcount/totpoints)); }
             }
 
         }
@@ -367,4 +372,24 @@ void blochsimfz(double *b1real, double *b1imag, double *xgrad, double *ygrad, do
     }
     free(e1);
     free(e2);
+}
+
+
+void bloch_set_num_threads(int n)
+{
+#ifdef _OPENMP
+    omp_set_num_threads(n);
+#else
+    (void) n; /* No-op when built without OpenMP. */
+#endif
+}
+
+
+int bloch_get_max_threads(void)
+{
+#ifdef _OPENMP
+    return omp_get_max_threads();
+#else
+    return 1;
+#endif
 }

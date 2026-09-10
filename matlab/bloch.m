@@ -35,12 +35,20 @@
 % Sign convention: a 90-degree x-pulse (real B1) rotates Mz to -My.
 % See M. Levitt. "Basics of Nuclear Magnetic Resonance". Page 250.
 %
+% Special commands:
+%   bloch('debug', true|false) - Enable/disable debug printing.
+%   bloch('gamma')              - Return GAMMA (2*pi).
+%   bloch('threads', n)         - Set the number of OpenMP threads used by
+%                                 blochsimfz (no effect if built without OpenMP).
+%   bloch('threads')            - Return the current OpenMP thread count.
+%
 % B. Hargreaves   Nov 2003. Original bloch simulator.
 % M. Robson       Reversed sign of gyromagnetic ratio.
 % C. Rodgers      Feb 2013. Hz units; debug flag.
 % W. Clarke       Perfect spoiler support.
 % J.G. Woods      Apr 2020. Velocity/flow support.
 %                 May 2026. Wrapper only; core code in bloch_mex.c / bloch.c.
+%                 Sep 2026. OpenMP parallelization support.
 
 function [mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv, mode, mx0, my0, mz0, spoil)
 
@@ -48,6 +56,20 @@ function [mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv, mode, mx0, my0, mz
 if exist('bloch_mex', 'file') ~= 3
     error('bloch:NotCompiled', ...
         'bloch_mex MEX file not found for this platform. Run build_matlab_mex.m from the bloch repository root.');
+end
+
+% Pass special string commands (e.g. 'debug', 'gamma', 'threads') straight through.
+if nargin >= 1 && ischar(b1)
+    outArgs = cell(1, nargout);
+    if nargin >= 2
+        [outArgs{:}] = bloch_mex(b1, gr);
+    else
+        [outArgs{:}] = bloch_mex(b1);
+    end
+    if nargout >= 1, mx = outArgs{1}; end
+    if nargout >= 2, my = outArgs{2}; end
+    if nargout >= 3, mz = outArgs{3}; end
+    return;
 end
 
 % Apply defaults for optional parameters

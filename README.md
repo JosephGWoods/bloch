@@ -108,6 +108,7 @@ mx, my, mz = bloch(b1, gr, dt, dp=dp)
 - **Custom initial magnetisation** via `mx0`, `my0`, `mz0`.
 - **Mode 0 or 1** — return the endpoint only, or the full time course.
 - All dimensions are batched simultaneously: a single call sweeps over all combinations of `df × dp × dv`.
+- **OpenMP parallelization** of the combined `df × dp × dv` parameter sweep, with configurable thread counts in Python and MATLAB.
 
 ---
 
@@ -117,6 +118,8 @@ mx, my, mz = bloch(b1, gr, dt, dp=dp)
 
 Requires a C compiler (`gcc` or `clang`).
 
+OpenMP is optional: if your compiler supports it, the build script will enable it for multi-threaded execution; otherwise the library still builds and runs in serial mode.
+
 ```bash
 git clone https://github.com/JosephGWoods/bloch.git
 cd bloch
@@ -124,15 +127,74 @@ bash build_python_lib.sh # compiles bloch.c → python/libbloch.*
 pip install -e .         # installs the bloch Python package
 ```
 
+If you want to enable multi-threaded execution, make sure the OpenMP runtime is available for your toolchain:
+
+- Ubuntu/Debian: `sudo apt install libgomp1` or install a gcc toolchain with OpenMP support
+- macOS: `brew install libomp` (or ensure `clang`/`gcc` is configured with OpenMP support)
+
 ### MATLAB
 
-Requires a MEX-compatible C compiler (`mex -setup C`, if not yet configured).
+Requires a MEX-compatible C compiler (`mex -setup C`, if not yet configured), e.g. MinGW-w64 on Windows.
 
 ```matlab
 cd /path/to/bloch
 build_matlab_mex   % compiles bloch_mex.c + bloch.c → matlab/bloch_mex.mex*
 addpath('matlab')
 ```
+
+---
+
+## Parallelization
+
+The Bloch simulation sweeps over a large grid of parameters (`df × dp × dv`), and the outer loop is parallelized with OpenMP when the compiler supports it. If OpenMP is unavailable, the library still builds and runs in serial mode.
+
+### Controlling the thread count
+
+**MATLAB**
+```matlab
+bloch('threads', 4);   % set the OpenMP thread count used by bloch
+n = bloch('threads');  % query the current thread count
+```
+
+By default, MATLAB appears to use a thread count equal to the number of logical processors available.
+
+**Python**
+```python
+from bloch import threads
+
+threads(4)   # set the OpenMP thread count used by bloch
+n = threads()  # query the current thread count
+```
+
+Both interfaces also respect the `OMP_NUM_THREADS` environment variable, but it is only read when the OpenMP runtime first initialises (typically on the first parallel region), so it must be set *before* the shared library / MEX file is loaded. Calling `bloch('threads', n)` / `threads(n)` at runtime is more reliable since it takes effect immediately via `omp_set_num_threads()` in the C code.
+
+### Benchmarking
+
+To benchmark the speed-up from OpenMP, use the MATLAB benchmark function or the Python benchmark script.
+
+**MATLAB** (from the repo root, with `matlab` and `examples` on the path):
+```matlab
+benchmark_bloch                      % benchmarks 1, current/2, and current threads
+benchmark_bloch('threads', [1 4 8])  % benchmark specific thread counts
+```
+
+**Python** (from the repository root):
+```bash
+python examples/benchmark_bloch.py                  # benchmarks 1, current/2, and current threads
+python examples/benchmark_bloch.py --threads 1 4 8  # benchmark specific thread counts
+```
+
+Both benchmarks accept a repeat count and an optional list of thread counts. If no thread counts are given, each queries the current Bloch thread count and benchmarks `1`, `current/2`, and `current`. Each benchmark restores the original thread count after completion, including when the benchmark fails.
+
+Example results from one 28-logical-processor PC (`df × dp × dv = 100 × 100 × 100`, 3 repeats):
+
+| OpenMP threads | MATLAB mean | MATLAB speed-up | Python mean | Python speed-up |
+|---:|---:|---:|---:|---:|
+| 1  | 13.880 s | 1.0×  | 6.435 s | 1.0× |
+| 14 | 1.465 s  | 9.5×  | 0.990 s | 6.5× |
+| 28 | 0.953 s  | 14.6× | 0.801 s | 8.0× |
+
+The exact timings depend on the processor, OpenMP runtime, and system load; the table illustrates the substantial speed-up from parallelizing the parameter sweep.
 
 ---
 
@@ -216,22 +278,24 @@ results = runtests('tests/matlab/testbloch.m')
 ```
 bloch/
 ├── c/
-│   ├── bloch.h           # Function declarations
-│   └── bloch.c           # Core simulation code
+│   ├── bloch.h            # Function declarations
+│   └── bloch.c            # Core simulation code
 ├── examples
-│   ├── examples.py       # Python examples
-│   └── media/            # Media saved in examples.py
+│   ├── benchmark_bloch.m  # MATLAB OpenMP benchmark function
+│   ├── benchmark_bloch.py # Python OpenMP benchmark script
+│   ├── examples.py        # Python examples
+│   └── media/             # Media saved in examples.py
 ├── matlab/
-│   ├── bloch_mex.c       # MEX wrapper
-│   └── bloch.m           # MATLAB wrapper
+│   ├── bloch_mex.c        # MEX wrapper
+│   └── bloch.m            # MATLAB wrapper
 ├── python/
-│   ├── bloch.py          # Python ctypes wrapper
-│   └── bloch_plot.py     # Plotting functions
+│   ├── bloch.py           # Python ctypes wrapper
+│   └── bloch_plot.py      # Plotting functions
 ├── tests/
-│   ├── test_bloch.m      # Matlab unit tests
-│   └── test_bloch.py     # Python unit tests
-├── build_python_lib.sh   # Builds python/libbloch.so
-└── build_matlab_mex.m    # Builds matlab/bloch_mex.mex*
+│   ├── test_bloch.m       # Matlab unit tests
+│   └── test_bloch.py      # Python unit tests
+├── build_python_lib.sh    # Builds python/libbloch.so
+└── build_matlab_mex.m     # Builds matlab/bloch_mex.mex*
 ```
 
 ---
@@ -242,4 +306,4 @@ bloch/
 - M. Robson - sign of gyromagnetic ratio
 - C. Rodgers - Hz units, debug flag, robustness improvements
 - W. Clarke - spoiling support
-- J.G. Woods - velocity/flow support, Python interface, ongoing maintenance
+- J.G. Woods - velocity/flow support, OpenMP parallelization support, Python interface, ongoing maintenance

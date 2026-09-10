@@ -95,6 +95,20 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         }
     }
 
+    /* JGW Special case - allow bloch('threads',n) syntax to set OpenMP thread count. */
+    if (nrhs == 2) {
+        char str1[1024];
+        str1[0] = '\0';
+        
+        if (mxGetString(prhs[0],str1,sizeof(str1)-1)==0) {
+            if (strcmp(str1,"threads") == 0) {
+                int nthreads = (int) mxGetScalar(prhs[1]);
+                bloch_set_num_threads(nthreads);
+                return;
+            }
+        }
+    }
+
     /* Special case - allow bloch('gamma') syntax. */
     if (nrhs == 1) {
         char str1[1024];
@@ -111,7 +125,24 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
                     *gamma_return = GAMMA;
                 }
                 return;
-            }
+
+            } else if (strcmp(str1,"threads") == 0) {
+
+                /* JGW Special case - allow bloch('threads') syntax to query OpenMP thread count. */
+                int nthreads = bloch_get_max_threads();
+                if (nlhs < 1) {
+                    mexPrintf("OpenMP threads = %d.\n", nthreads);
+                } else {
+                    double *threads_return;
+                    plhs[0] = mxCreateDoubleMatrix(1,1,mxREAL);
+                    threads_return = mxGetPr(plhs[0]);
+                    *threads_return = nthreads;
+                }
+                return;
+            
+            } else {
+                mexErrMsgIdAndTxt("bloch:BadNInput","Unknown single-input command.");
+            } 
         }
     }
     
