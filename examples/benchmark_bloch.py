@@ -29,15 +29,16 @@ def build_problem():
             np.ones(ntime // 2) * -TBWP / dur / slthk,
         ]
     )
-    dp = np.linspace(-slthk, slthk, 100)
-    df = np.linspace(-100, 100, 100)
-    dv = np.linspace(-0.5, 0.5, 100)
-    return b1, gz, dt, dp, df, dv
+    db1 = np.linspace(0.5, 1.5, 40)
+    dp  = np.linspace(-slthk, slthk, 40)
+    df  = np.linspace(-100, 100, 40)
+    dv  = np.linspace(-0.5, 0.5, 40)
+    return b1, gz, dt, db1, df, dp, dv
 
 
-def benchmark_once(b1, gz, dt, dp, df, dv):
+def benchmark_once(b1, gz, dt, db1, dp, df, dv):
     t0 = time.perf_counter()
-    _, _, _ = bloch(b1, gz, dt, dp=dp, df=df, dv=dv, mode=0)
+    _, _, _ = bloch(b1, gz, dt, db1=db1, dp=dp, df=df, dv=dv, mode=0)
     elapsed = time.perf_counter() - t0
     return elapsed
 
@@ -46,9 +47,9 @@ def run_benchmark(repeats, threads_list):
 
     original_threads = max(1, threads())
 
-    b1, gz, dt, dp, df, dv = build_problem()
+    b1, gz, dt, db1, df, dp, dv = build_problem()
 
-    print(f"Problem size: dp={dp.size}, df={df.size}, dv={dv.size}, total= {dp.size * df.size * dv.size}")
+    print(f"Problem size: db1={db1.size}, df={df.size}, dp={dp.size}, dv={dv.size}, total= {db1.size * dp.size * df.size * dv.size}")
     print(f"Runs per thread count: {repeats}")
 
     try:
@@ -57,7 +58,7 @@ def run_benchmark(repeats, threads_list):
 
             times = []
             for _ in range(repeats):
-                elapsed = benchmark_once(b1, gz, dt, dp, df, dv)
+                elapsed = benchmark_once(b1, gz, dt, db1, dp, df, dv)
                 times.append(elapsed)
 
             print(f"=== OpenMP threads = {nthreads} ===")

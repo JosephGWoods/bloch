@@ -19,26 +19,27 @@ static bool debugflag = false;
 /* End CTR. */
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
-/* bloch(b1,grad,dt,t1,t2,df,dxyz,dvxyz,mode,mx,my,mz,spoil) */
+/* bloch(b1,grad,dt,t1,t2,db1,df,dxyz,dvxyz,mode,mx,my,mz,spoil) */
 {
-    double *b1r;	   /* Real-part of B1 field             */
-    double *b1i;	   /* Imag-part of B1 field             */
-    double *gx;        /* X              gradient (Hz/cm)   */
-    double *gy;        /* Y              gradient (Hz/cm)   */
-    double *gz;        /* Z              gradient (Hz/cm)   */
-    double *tp;        /* Time steps (s)                    */
-    double *ti;        /* Time intervals (s)                */
-    double t1;         /* T1 time constant (s)              */
-    double t2;         /* T2 time constant (s)              */
-    double *df;        /* Off-resonance Frequencies (Hz)	*/
-    double *dx;        /* X Positions (cm)                  */
-    double *dy;        /* Y Positions (cm)                  */
-    double *dz;        /* Z Positions (cm)                  */
-    double *dxv;       /* X Velocities (cm/s)               */
-    double *dyv;       /* Y Velocities (cm/s)               */
-    double *dzv;       /* Z Velocities (cm/s)               */
-    int md;            /* Mode - 0=from M0, 1=steady-state	*/
-    double *mxin;      /* Input points                      */
+    double *b1r;    /* Real-part of B1 field            */
+    double *b1i;	/* Imag-part of B1 field            */
+    double *gx;     /* X              gradient (Hz/cm)  */
+    double *gy;     /* Y              gradient (Hz/cm)  */
+    double *gz;     /* Z              gradient (Hz/cm)  */
+    double *tp;     /* Time steps (s)                   */
+    double *ti;     /* Time intervals (s)               */
+    double t1;      /* T1 time constant (s)             */
+    double t2;      /* T2 time constant (s)             */
+    double *db1;    /* B1+ scaling factors (unitless)   */
+    double *df;     /* Off-resonance Frequencies (Hz)	*/
+    double *dx;     /* X Positions (cm)                 */
+    double *dy;     /* Y Positions (cm)                 */
+    double *dz;     /* Z Positions (cm)                 */
+    double *dxv;    /* X Velocities (cm/s)              */
+    double *dyv;    /* Y Velocities (cm/s)              */
+    double *dzv;    /* Z Velocities (cm/s)              */
+    int md;         /* Mode - 0=from M0, 1=steady-state	*/
+    double *mxin;   /* Input points                     */
     double *myin;
     double *mzin;
     double *spoil;  /* Transverse magnetisation = 0 when spoil == 1. */
@@ -49,35 +50,36 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     double *mx;	    /* Output Arrays */
     double *my;     /* Output Arrays */
     double *mz;     /* Output Arrays */
+
+    int gyaflag=0;       /* 1 if gy was allocated.   */
+    int gzaflag=0;       /* 1 if gz was allocated.   */
+    int dyaflag=0;       /* 1 if dy was allocated.   */
+    int dzaflag=0;       /* 1 if dz was allocated.   */
+    int spoilflag=0;     /* 1 if spoiling allocated. */
     
-    int gyaflag=0;        /* 1 if gy was allocated.        */
-    int gzaflag=0;        /* 1 if gz was allocated.        */
-    int dyaflag=0;        /* 1 if dy was allocated.        */
-    int dzaflag=0;        /* 1 if dz was allocated.        */
-    int spoilflag=0;      /* 1 if spoiling allocated.      */
-    
-    int ntime;        /* Number of time points.              */
-    int ntout;        /* Number of time poitns at output.    */
-    int outsize[4];	  /* Output matrix sizes                 */
-    int ngrad;        /* Number of gradient dimensions       */
-    int nf;           /* Number of off-resonance frequencies */
-    int npos;         /* Number of positions.  Calculated from nposN and nposM, depends on them. */
-    int nposM;        /* Height of passed position matrix.   */
-    int nposN;        /* Width of passed position matrix.    */
-    int nfnpos;       /* Number of frequencies * number of positions. */
+    int ntime;           /* Number of time points.                                                 */
+    int ntout;           /* Number of time poitns at output.                                       */
+    int outsize[5];      /* Output matrix sizes                                                    */
+    int ngrad;           /* Number of gradient dimensions                                          */
+    int nb1;             /* Number of B1+ scaling factors                                          */
+    int nf;              /* Number of off-resonance frequencies                                    */
+    int npos;            /* Number of positions. Calculated from nposN and nposM, depends on them. */
+    int nposM;           /* Height of passed position matrix.                                      */
+    int nposN;           /* Width of passed position matrix.                                       */
+    int nfnpos;          /* Number of frequencies * number of positions.                           */
     int count;
-    int gcount=1;     /* Gradient counter                   */
-    int nvel;         /* Number of velocities.  Calculated from nvelN and nvelM. */
-    int nvelM;        /* Height of passed velocity matrix.  */
-    int nvelN;        /* Width of passed velocity matrix.   */
-    int nfnposnvel;   /* Number of frequencies * positions * velocities.                */
-    int ntnfnposnvel; /* Number of output times * frequencies * positions * velocities. */
-    int dyvaflag;     /* 1 if dyv was allocated.            */
-    int dzvaflag;     /* 1 if dzv was allocated.            */
-    int noutdim;      /* Number of output matrix dimensions */
-    int nmxin;        /* Number of input magnetization points. */
-    int nmyin;        /* Number of input magnetization points. */
-    int nmzin;        /* Number of input magnetization points. */
+    int gcount=1;        /* Gradient counter                                                       */
+    int nvel;            /* Number of velocities.  Calculated from nvelN and nvelM.                */
+    int nvelM;           /* Height of passed velocity matrix.                                      */
+    int nvelN;           /* Width of passed velocity matrix.                                       */
+    int nb1nfnposnvel;   /* Number of frequencies * positions * velocities.                        */
+    int ntnb1nfnposnvel; /* Number of output times * frequencies * positions * velocities.         */
+    int dyvaflag=0;      /* 1 if dyv was allocated.                                                */
+    int dzvaflag=0;      /* 1 if dzv was allocated.                                                */
+    int noutdim;         /* Number of output matrix dimensions                                     */
+    int nmxin;           /* Number of input magnetization points.                                  */
+    int nmyin;           /* Number of input magnetization points.                                  */
+    int nmzin;           /* Number of input magnetization points.                                  */
     
     /* CTR: ERROR CHECKING. Test number of inputs. */
     
@@ -147,7 +149,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     }
     
     /* Check number of inputs and outputs: */
-    if (nrhs < 8) {
+    if (nrhs < 9) {
         mexPrintf("Hint: Type 'doc %s' for help on input parameters.\n",mexFunctionName());
         mexErrMsgIdAndTxt("bloch:BadNInput","At least 8 inputs required.");
     }
@@ -166,7 +168,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     /* End CTR. */
     
     DEBUG_printf("---------------------------------------------------------------------------------\n");
-    DEBUG_printf("3D-position, 1D-frequency, and 3D-velocity Bloch Simulator with linear gradients.\n");
+    DEBUG_printf("1D-B1+ scaling, 1D-frequency, 3D-position, and 3D-velocity Bloch Simulator with linear gradients.\n");
     DEBUG_printf("---------------------------------------------------------------------------------\n\n");
     
     ntime = mxGetM(prhs[0]) * mxGetN(prhs[0]);	/* Number of Time, RF, and Grad points */
@@ -273,32 +275,40 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     
     DEBUG_printf("t1 = %d \n",t1);
     DEBUG_printf("t2 = %d \n",t2);
-        
+
+    /* === B1+ Scaling Factors ===== */
+    db1 = mxGetPr(prhs[5]);
+    nb1 = mxGetM(prhs[5]) * mxGetN(prhs[5]);
+
+    DEBUG_printf("%d B1+ scaling factors.\n",nb1);
+    if (db1 == NULL)
+        mexErrMsgIdAndTxt("bloch:BadPosition","db1 is not allocated.");
+
     /* === Frequency Points ===== */
-    df = mxGetPr(prhs[5]);
-    nf = mxGetM(prhs[5]) * mxGetN(prhs[5]);
+    df = mxGetPr(prhs[6]);
+    nf = mxGetM(prhs[6]) * mxGetN(prhs[6]);
     
     DEBUG_printf("%d Frequency points.\n",nf);
     if (df == NULL)
         mexErrMsgIdAndTxt("bloch:BadPosition","df is not allocated.");
 
     /* === Position Points ===== */
-    nposM = mxGetM(prhs[6]);
-    nposN = mxGetN(prhs[6]);
+    nposM = mxGetM(prhs[7]);
+    nposN = mxGetN(prhs[7]);
     
     DEBUG_printf("Position vector is %d x %d.\n",nposM,nposN);
     
     if (nposN==3) { /* Assume 3 position dimensions given */
         npos = nposM;
         DEBUG_printf("Assuming %d 3-Dimensional Positions.\n",npos);
-        dx = mxGetPr(prhs[6]);
+        dx = mxGetPr(prhs[7]);
         dy = dx + npos;
         dz = dy + npos;
 
     } else if (nposN==2) { /* Assume only 2 position dimensions given */
         npos = nposM;
         DEBUG_printf("Assuming %d 2-Dimensional Positions.\n",npos);
-        dx = mxGetPr(prhs[6]);
+        dx = mxGetPr(prhs[7]);
         dy = dx + npos;
         dz = (double *)malloc(npos * sizeof(double));
         dzaflag = 1;
@@ -310,7 +320,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
      * is too much work to try to figure out anything else! */
         npos = nposM * nposN;
         DEBUG_printf("Assuming %d 1-Dimensional Positions.\n",npos);
-        dx = mxGetPr(prhs[6]);
+        dx = mxGetPr(prhs[7]);
         dy = (double *)malloc(npos * sizeof(double));
         dz = (double *)malloc(npos * sizeof(double));
         dyaflag = 1;
@@ -331,23 +341,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     if (dz == NULL)
         mexErrMsgIdAndTxt("bloch:BadPosition","dz is not allocated.");
 
-    nfnpos = nf*npos;	/* Just used to speed things up below. 	*/ 
-
     /* === Velocity Points ===== */
-    nvelM = mxGetM(prhs[7]);
-    nvelN = mxGetN(prhs[7]);
+    nvelM = mxGetM(prhs[8]);
+    nvelN = mxGetN(prhs[8]);
     DEBUG_printf("Velocity vector is %d x %d.\n",nvelM,nvelN);
 
     if (nvelN==3) {         /* Assume 3 velocity dimensions given */
         nvel = nvelM;
         DEBUG_printf("Assuming %d 3-Dimensional Velocities.\n",nvel);
-        dxv = mxGetPr(prhs[7]);
+        dxv = mxGetPr(prhs[8]);
         dyv = dxv + nvel;
         dzv = dyv + nvel;
     } else if (nvelN == 2) {	/* Assume only 2 velocity dimensions given */
         nvel = nvelM;
         DEBUG_printf("Assuming %d 2-Dimensional Velocities.\n",nvel);
-        dxv = mxGetPr(prhs[7]);
+        dxv = mxGetPr(prhs[8]);
         dyv = dxv + nvel;
         dzv = (double *)malloc(nvel * sizeof(double));
         dzvaflag = 1;
@@ -356,7 +364,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     } else {               	/* Assume only 1 velocity dimension given */
         nvel = nvelM * nvelN;
         DEBUG_printf("Assuming %d 1-Dimensional Velocities.\n",nvel);
-        dxv = mxGetPr(prhs[7]);
+        dxv = mxGetPr(prhs[8]);
         dyv = (double *)malloc(nvel * sizeof(double));
         dzv = (double *)malloc(nvel * sizeof(double));
         dyvaflag = 1;
@@ -377,11 +385,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     if (dzv == NULL)
         mexErrMsgIdAndTxt("bloch:BadVelocity","dzv is not allocated.");
 
-    nfnposnvel = nfnpos * nvel;
+    nb1nfnposnvel = nb1 * nf * npos * nvel;
   
     /* ===== Mode, defaults to 0 (simulate single endpoint). ==== */
-    if (nrhs > 8)
-        md = (int)(*mxGetPr(prhs[8]));
+    if (nrhs > 9)
+        md = (int)(*mxGetPr(prhs[9]));
     else
         md = 0;
 
@@ -393,12 +401,12 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         DEBUG_printf("Simulation to Endpoint.\n");
     }
 
-    ntnfnposnvel = ntout*nfnposnvel;
+    ntnb1nfnposnvel = ntout*nb1nfnposnvel;
 
     /* ===== Allocate Output Magnetization vectors arrays.	*/
-    plhs[0] = mxCreateDoubleMatrix(ntnfnposnvel,1,mxREAL);	/* Mx, output. */
-    plhs[1] = mxCreateDoubleMatrix(ntnfnposnvel,1,mxREAL);	/* My, output. */
-    plhs[2] = mxCreateDoubleMatrix(ntnfnposnvel,1,mxREAL);	/* Mz, output. */
+    plhs[0] = mxCreateDoubleMatrix(ntnb1nfnposnvel,1,mxREAL); /* Mx, output. */
+    plhs[1] = mxCreateDoubleMatrix(ntnb1nfnposnvel,1,mxREAL); /* My, output. */
+    plhs[2] = mxCreateDoubleMatrix(ntnb1nfnposnvel,1,mxREAL); /* Mz, output. */
     
     mx = mxGetPr(plhs[0]);
     my = mxGetPr(plhs[1]);
@@ -409,22 +417,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     mzout = mz;
 
     /* ===== If Initial Magnetization is given... */
-    if (nrhs > 11) {
-        nmxin = mxGetM(prhs[9])  * mxGetN(prhs[9]);
-        nmyin = mxGetM(prhs[10]) * mxGetN(prhs[10]);
-        nmzin = mxGetM(prhs[11]) * mxGetN(prhs[11]);
+    if (nrhs > 12) {
+        nmxin = mxGetM(prhs[10]) * mxGetN(prhs[10]);
+        nmyin = mxGetM(prhs[11]) * mxGetN(prhs[11]);
+        nmzin = mxGetM(prhs[12]) * mxGetN(prhs[12]);
 
         /* Set output magnetization to that passed.
          * If multiple time points, then just the first is set. */
         DEBUG_printf("Using Specified Initial Magnetization.\n");
-        mxin = mxGetPr(prhs[9]);
-        myin = mxGetPr(prhs[10]);
-        mzin = mxGetPr(prhs[11]);
+        mxin = mxGetPr(prhs[10]);
+        myin = mxGetPr(prhs[11]);
+        mzin = mxGetPr(prhs[12]);
 
-        if ( (nmxin == nfnposnvel) &&
-             (nmyin == nfnposnvel) &&
-             (nmzin == nfnposnvel) ) {
-            for (count=0; count<nfnposnvel; count++) {
+        if ( (nmxin == nb1nfnposnvel) &&
+             (nmyin == nb1nfnposnvel) &&
+             (nmzin == nb1nfnposnvel) ) {
+            for (count=0; count<nb1nfnposnvel; count++) {
                 mxout[count*ntout] = mxin[count];
                 myout[count*ntout] = myin[count];
                 mzout[count*ntout] = mzin[count];
@@ -432,19 +440,19 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
         } else if ( (nmxin == 1) &&
                     (nmyin == 1) &&
                     (nmzin == 1) ) {
-            for (count=0; count<nfnposnvel; count++) {
+            for (count=0; count<nb1nfnposnvel; count++) {
                 mxout[count*ntout] = mxin[0];
                 myout[count*ntout] = myin[0];
                 mzout[count*ntout] = mzin[0];
             }
         } else {
             mexErrMsgIdAndTxt("bloch:BadInitialMagnetization",
-                "Initial magnetization dimensions are not compatible.\nMust be either 1x1 or Npositions x Nfreq x Nvelocities.");
+                "Initial magnetization dimensions are not compatible.\nMust be either 1x1 or Nb1 x Nfreq x Npositions x Nvelocities.");
         }
     } else {
         DEBUG_printf("Initial magnetization not passed.\n");
         DEBUG_printf(" --> Using [0; 0; 1] for initial magnetization.\n");
-        for (count=0; count<nfnposnvel; count++) {
+        for (count=0; count<nb1nfnposnvel; count++) {
             mxout[count*ntout] = 0;	/* Set magnetization to Equilibrium */
             myout[count*ntout] = 0;
             mzout[count*ntout] = 1;
@@ -452,11 +460,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     }
 
     /* WTC: Spoiler vector */
-    if (nrhs > 12) {
-        if((mxGetM(prhs[12]) * mxGetN(prhs[12]) == ntime)) {
-            spoil = mxGetPr(prhs[12]);
+    if (nrhs > 13) {
+        if((mxGetM(prhs[13]) * mxGetN(prhs[13]) == ntime)) {
+            spoil = mxGetPr(prhs[13]);
             DEBUG_printf("Spoiler length same as B1 length.\n");
-        } else if (mxGetM(prhs[12]) * mxGetN(prhs[12]) != ntime) {
+        } else if (mxGetM(prhs[13]) * mxGetN(prhs[13]) != ntime) {
             mexErrMsgIdAndTxt("bloch:BadSpoiler","Spoiler length differs from B1 length.");
         }
     } else {
@@ -469,61 +477,25 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
 
 
     /* ======= Do The Simulation! ====== */
-    DEBUG_printf("Calling blochsimfz() function.\n");
+    DEBUG_printf("Calling blochsimbfzv() function.\n");
 
-    blochsimfz(b1r,b1i,gx,gy,gz,tp,ntime,t1,t2,df,nf,dx,dy,dz,npos,dxv,dyv,dzv,nvel,mx,my,mz,md,spoil);
+    blochsimbfzv(b1r,b1i,gx,gy,gz,
+                tp,ntime,t1,t2,
+                db1,nb1,df,nf,
+                dx,dy,dz,npos,
+                dxv,dyv,dzv,nvel,
+                mx,my,mz,md,spoil);
 
     
     /* ======= Reshape Output Matrices ====== */
-    noutdim = (int)(ntout>1) + (int)(npos>1) + (int)(nf>1) + (int)(nvel>1);
-
-    if (noutdim == 4) {
-        outsize[0]=ntout;
-        outsize[1]=npos;
-        outsize[2]=nf;
-        outsize[3]=nvel;
-        mxSetDimensions(plhs[0],outsize,4);  /* Set to 4D array. */
-        mxSetDimensions(plhs[1],outsize,4);  /* Set to 4D array. */
-        mxSetDimensions(plhs[2],outsize,4);  /* Set to 4D array. */
-    } else if (noutdim == 3) { /* Try 3 dimensions */
-        if ((ntout > 1) && (npos > 1) && (nf > 1) && (nvel == 1)) {
-            outsize[0]=ntout;
-            outsize[1]=npos;
-            outsize[2]=nf;
-        } else if ((ntout > 1) && (npos > 1) && (nf == 1) && (nvel > 1)) {
-            outsize[0]=ntout;
-            outsize[1]=npos;
-            outsize[2]=nvel;
-        } else if ((ntout > 1) && (npos == 1) && (nf > 1) && (nvel > 1)) {
-            outsize[0]=ntout;
-            outsize[1]=nf;
-            outsize[2]=nvel;
-        } else if ((ntout == 1) && (npos > 1) && (nf > 1) && (nvel > 1)) {
-            outsize[0]=npos;
-            outsize[1]=nf;
-            outsize[2]=nvel;
-        }
-        mxSetDimensions(plhs[0],outsize,3);  /* Set to 3D array. */
-        mxSetDimensions(plhs[1],outsize,3);  /* Set to 3D array. */
-        mxSetDimensions(plhs[2],outsize,3);  /* Set to 3D array. */
-    } else { /* Only 2 or 1 dimensions */
-        if (ntout > 1) {
-            outsize[0]=ntout;
-            outsize[1]=npos*nf*nvel;
-        } else if (npos > 1) {
-            outsize[0]=npos;
-            outsize[1]=nf*nvel;
-        } else if (nf > 1) {
-            outsize[0]=nf;
-            outsize[1]=nvel;
-        } else {
-            outsize[0]=nvel;
-            outsize[1]=1;
-        }
-        mxSetDimensions(plhs[0],outsize,2);  /* Set to 2D array. */
-        mxSetDimensions(plhs[1],outsize,2);  /* Set to 2D array. */
-        mxSetDimensions(plhs[2],outsize,2);  /* Set to 2D array. */
-    }
+    outsize[0]=ntout;
+    outsize[1]=nb1;
+    outsize[2]=nf;
+    outsize[3]=npos;
+    outsize[4]=nvel;
+    mxSetDimensions(plhs[0],outsize,5);  /* Set to 5D array. */
+    mxSetDimensions(plhs[1],outsize,5);  /* Set to 5D array. */
+    mxSetDimensions(plhs[2],outsize,5);  /* Set to 5D array. */
 
     /* ====== Free up allocated memory, if necessary. ===== */
     if (!mxIsComplex(prhs[0])) free(b1i);

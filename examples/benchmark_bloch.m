@@ -23,9 +23,9 @@ function benchmark_bloch(varargin)
         requestedThreads = unique([1, max(1, round(originalThreads / 2)), originalThreads]);
     end
 
-    [b1, gz, dt, dp, df, dv] = build_problem();
-    fprintf('Problem size: dp=%d, df=%d, dv=%d, total=%d\n', ...
-        numel(dp), numel(df), numel(dv), numel(dp)*numel(df)*numel(dv));
+    [b1, gz, dt, db1, df, dp, dv] = build_problem();
+    fprintf('Problem size: db1=%d, df=%d, dp=%d, dv=%d, total=%d\n', ...
+        numel(db1), numel(df), numel(dp), numel(dv), numel(db1)*numel(df)*numel(dp)*numel(dv));
     fprintf('Runs per thread count: %d\n', repeats);
 
     cleanupObj = onCleanup(@() restore_threads(originalThreads)); % restores threads even on error
@@ -37,7 +37,7 @@ function benchmark_bloch(varargin)
         times = zeros(repeats, 1);
         for jj = 1:repeats
             t0 = tic;
-            [~, ~, ~] = bloch(b1, gz, dt, [], [], df, dp, dv, 0);
+            [~, ~, ~] = bloch(b1, gz, dt, [], [], db1, df, dp, dv, 0);
             times(jj) = toc(t0);
         end
 
@@ -47,7 +47,8 @@ function benchmark_bloch(varargin)
     end
 end
 
-function [b1, gz, dt, dp, df, dv] = build_problem()
+
+function [b1, gz, dt, db1, df, dp, dv] = build_problem()
     % Slice-selective windowed sinc pulse (same in benchmark_bloch.m and benchmark_bloch.py).
     dur    = 2e-3;                                          % pulse duration (s)
     dt     = 10e-6;                                         % 10 us per time step
@@ -63,10 +64,10 @@ function [b1, gz, dt, dp, df, dv] = build_problem()
     b1     = [b1; zeros(floor(ntime/2), 1)];                % pad RF with zeros during gradient rewinder
     gz     = [ones(ntime, 1)          *  TBWP / dur / slthk;    % slice-selective gradient waveform (Hz/m)
               ones(floor(ntime/2), 1) * -TBWP / dur / slthk];   % slice rewinding gradient waveform (Hz/m)
-
-    dp = linspace(-slthk, slthk, 100); % (m)
-    df = linspace(-100, 100, 100);     % (Hz)
-    dv = linspace(-0.5, 0.5, 100);     % (m/s)
+    db1 = linspace(0.5, 1.5, 40);      % (unitless)
+    dp  = linspace(-slthk, slthk, 40); % (m)
+    df  = linspace(-100, 100, 40);     % (Hz)
+    dv  = linspace(-0.5, 0.5, 40);     % (m/s)
 end
 
 function restore_threads(originalThreads)

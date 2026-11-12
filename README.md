@@ -62,11 +62,11 @@ mx, my, mz = bloch(b1, gr, dt, t1=t1, t2=t2, df=df)
 
 **MATLAB**
 ```matlab
-df = linspace(-500, 500, 200)'; % Hz
-t1 = 1.0; % s
-t2 = 0.1; % s
+df  = linspace(-500, 500, 200)'; % Hz
+t1  = 1.0; % s
+t2  = 0.1; % s
 
-[mx, my, mz] = bloch(b1, gr, dt, t1, t2, df);
+[mx, my, mz] = bloch(b1, gr, dt, t1, t2, [], df);
 % mx, my, mz are 200×1 vectors
 ```
 
@@ -101,14 +101,15 @@ mx, my, mz = bloch(b1, gr, dt, dp=dp)
 
 - **Complex RF pulses**
 - **T1/T2 relaxation**
+- **Multiple B1 scalings** — vectorised over any number of scalings `db1`.
 - **Multiple off-resonances** — vectorised over any number of frequencies `df`.
 - **1D/2D/3D positions** — vectorised over 1D, 2D, or 3D positions `dp`.
 - **1D/2D/3D velocities** — vectorised over 1D, 2D, or 3D velocities `dv`.
 - **Spoiling** — per-timestep flag to zero transverse magnetisation.
 - **Custom initial magnetisation** via `mx0`, `my0`, `mz0`.
 - **Mode 0 or 1** — return the endpoint only, or the full time course.
-- All dimensions are batched simultaneously: a single call sweeps over all combinations of `df × dp × dv`.
-- **OpenMP parallelization** of the combined `df × dp × dv` parameter sweep, with configurable thread counts in Python and MATLAB.
+- All dimensions are batched simultaneously: a single call sweeps over all combinations of `db1 x df × dp × dv`.
+- **OpenMP parallelization** of the combined `db1 x df × dp × dv` parameter sweep, with configurable thread counts in Python and MATLAB.
 
 ---
 
@@ -186,15 +187,16 @@ python examples/benchmark_bloch.py --threads 1 4 8  # benchmark specific thread 
 
 Both benchmarks accept a repeat count and an optional list of thread counts. If no thread counts are given, each queries the current Bloch thread count and benchmarks `1`, `current/2`, and `current`. Each benchmark restores the original thread count after completion, including when the benchmark fails.
 
-Example results from one 28-logical-processor PC (`df × dp × dv = 100 × 100 × 100`, 3 repeats):
+Example results from one 28-logical-processor PC (3 ms RF and gradient simulation, 10 us time step, `db1 x df × dp × dv = 40 x 40 × 40 × 40 = 2,560,000`, 3 repeats):
 
 | OpenMP threads | MATLAB mean | MATLAB speed-up | Python mean | Python speed-up |
 |---:|---:|---:|---:|---:|
-| 1  | 13.880 s | 1.0×  | 6.435 s | 1.0× |
-| 14 | 1.465 s  | 9.5×  | 0.990 s | 6.5× |
-| 28 | 0.953 s  | 14.6× | 0.801 s | 8.0× |
+| 1  | 39.357 s | 1.0×  | 19.761 s | 1.0× |
+| 14 | 5.195 s  | 7.6×  | 2.899 s  | 6.8× |
+| 28 | 3.519 s  | 11.2× | 2.301 s  | 8.6× |
 
-The exact timings depend on the processor, OpenMP runtime, and system load; the table illustrates the substantial speed-up from parallelizing the parameter sweep.
+The exact timings will depend on the processor, OpenMP runtime, compiler, and system load;
+the table simply illustrates the substantial speed-up from parallelizing the parameter sweep.
 
 ---
 
@@ -205,7 +207,7 @@ The exact timings depend on the processor, OpenMP runtime, and system load; the 
 ```python
 mx, my, mz = bloch(b1, gr, tp,
                    t1=inf, t2=inf,
-                   df=0.0, dp=0.0, dv=0.0,
+                   db1=1.0, df=0.0, dp=0.0, dv=0.0,
                    mode=0,
                    mx0=None, my0=None, mz0=None,
                    spoil=None)
@@ -215,10 +217,10 @@ mx, my, mz = bloch(b1, gr, tp,
 
 ```matlab
 [mx, my, mz] = bloch(b1, gr, tp)
-[mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv)
-[mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv, mode)
-[mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv, mode, mx0, my0, mz0)
-[mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv, mode, mx0, my0, mz0, spoil)
+[mx, my, mz] = bloch(b1, gr, tp, t1, t2, db1, df, dp, dv)
+[mx, my, mz] = bloch(b1, gr, tp, t1, t2, db1, df, dp, dv, mode)
+[mx, my, mz] = bloch(b1, gr, tp, t1, t2, db1, df, dp, dv, mode, mx0, my0, mz0)
+[mx, my, mz] = bloch(b1, gr, tp, t1, t2, db1, df, dp, dv, mode, mx0, my0, mz0, spoil)
 ```
 
 Pass `[]` for any optional MATLAB argument to accept its default.
@@ -227,14 +229,15 @@ Pass `[]` for any optional MATLAB argument to accept its default.
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `b1` | complex `(T,)` | RF pulse (Hz) | — |
-| `gr` | real `(T,)` or `(T,2)` or `(T,3)` | Gradient waveform (Hz/units) | — |
-| `tp` | scalar or `(T,)` | Time step duration (s), or monotonically increasing end-times | — |
-| `t1` | scalar | T1 relaxation time (s) | `inf` |
-| `t2` | scalar | T2 relaxation time (s) | `inf` |
-| `df` | `(F,)` | Off-resonance frequencies (Hz) | `0` |
-| `dp` | `(P,)` or `(P,2)` or `(P,3)` | Spatial positions (units) | `0` |
-| `dv` | `(V,)` or `(V,2)` or `(V,3)` | Velocities (units/s) | `0` |
+| `b1`  | complex `(T,)` | RF pulse (Hz) | — |
+| `gr`  | real `(T,)` or `(T,2)` or `(T,3)` | Gradient waveform (Hz/units) | — |
+| `tp`  | scalar or `(T,)` | Time step duration (s), or monotonically increasing end-times | — |
+| `t1`  | scalar | T1 relaxation time (s) | `inf` |
+| `t2`  | scalar | T2 relaxation time (s) | `inf` |
+| `db1` | `(B,)` | B1+ scaling factors | `1` |
+| `df`  | `(F,)` | Off-resonance frequencies (Hz) | `0` |
+| `dp`  | `(P,)` or `(P,2)` or `(P,3)` | Spatial positions (units) | `0` |
+| `dv`  | `(V,)` or `(V,2)` or `(V,3)` | Velocities (units/s) | `0` |
 | `mode` | int | `0` = endpoint only; `1` = full time course | `0` |
 | `mx0,my0,mz0` | arrays | Initial magnetisation | `[0, 0, 1]` |
 | `spoil` | `(T,)` | Per-step spoil flags (1 = zero Mx/My) | all zeros |
@@ -246,8 +249,8 @@ Units of distance can be anything as long as `gr`, `dp`, and `dv` are mutually c
 | Condition | Python shape | MATLAB shape |
 |-----------|-------------|--------------|
 | mode=0, all scalar | `()` | `[1,1]` |
-| mode=0, F×P×V | `(V, F, P)` | `[P, F, V]` |
-| mode=1, F×P×V | `(V, F, P, T)` | `[T, P, F, V]` |
+| mode=0, F×P×V | `(V, P, F, B)` | `[B, F, P, V]` |
+| mode=1, F×P×V | `(V, P, F, B, T)` | `[T, B, F, P, V]` |
 
 Singleton dimensions are squeezed in both interfaces.
 
@@ -306,4 +309,4 @@ bloch/
 - M. Robson - sign of gyromagnetic ratio
 - C. Rodgers - Hz units, debug flag, robustness improvements
 - W. Clarke - spoiling support
-- J.G. Woods - velocity/flow support, OpenMP parallelization support, Python interface, ongoing maintenance
+- J.G. Woods - velocity/flow support, OpenMP parallelization support, Python interface, B1+ scaling support, ongoing maintenance

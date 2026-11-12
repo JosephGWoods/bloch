@@ -4,14 +4,16 @@ bloch_animation.py — Bloch sphere animation and profile plotting helpers.
 Two public functions:
 
 ``animate_bloch``  — animates mode=1 output over time.
-  - Single spin (no dp/df): rotating vector on the Bloch sphere.
-  - Multi-position (dp given): Mx/My/Mz vs position, animated over time.
+  - Single spin (no db1/df/dp): rotating vector on the Bloch sphere.
+  - Multi-b1 scaling (db1 given): Mx/My/Mz vs B1+ scaling, animated over time.
   - Multi-frequency (df given): Mx/My/Mz vs off-resonance, animated over time.
+  - Multi-position (dp given): Mx/My/Mz vs position, animated over time.
 
 ``plot_bloch`` — static plot of mode=0 output.
   - Single spin: vector on the Bloch sphere.
-  - Multi-position (dp given): Mx/My/Mz vs position.
+  - Multi-b1 scaling (db1 given): Mx/My/Mz vs B1+ scaling.
   - Multi-frequency (df given): Mx/My/Mz vs off-resonance.
+  - Multi-position (dp given): Mx/My/Mz vs position.
 
 Usage
 -----
@@ -252,7 +254,7 @@ def _make_waveform_axes(fig, subplot_spec, b1, g, dt, b1_units='uT', g_units='mT
 # Public: animate_bloch
 # ---------------------------------------------------------------------------
 
-def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
+def animate_bloch(mx, my, mz, dt=None, db1=None, df=None, dp=None,
                   xlabel=None, title=None, filepath=None,
                   fps=30, dpi=200,
                   trace=True, trace_len=None, unit_sphere=True,
@@ -262,8 +264,8 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
 
     Dispatches automatically based on which optional arguments are supplied:
 
-    - *dp* or *df* with more than one element → line-plot animation of
-      Mx/My/Mz vs position or frequency over time.
+    - *db1* or *df* or *dp* with more than one element → line-plot animation of
+      Mx/My/Mz vs B1+ scaling or frequency or position over time.
     - Neither → Bloch sphere animation (single isochromat only).
 
     Parameters
@@ -271,16 +273,18 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
     mx, my, mz : array_like
         mode=1 magnetisation output of ``bloch()``.
         Shape ``(ntime,)`` for a single spin, or ``(n, ntime)`` for n
-        positions/frequencies.
+        b1 scaling factors/frequencies/positions.
     dt : float, optional
         Duration of each time step (s). Shown as elapsed time on the plot.
-    dp : array_like, shape (n,), optional
-        Spatial positions passed to ``bloch()``. Triggers profile mode.
+    db1 : array_like, shape (n,), optional
+        B1+ scaling factors passed to ``bloch()``. Triggers profile mode.
     df : array_like, shape (n,), optional
         Off-resonance frequencies passed to ``bloch()``. Triggers profile mode.
+    dp : array_like, shape (n,), optional
+        Spatial positions passed to ``bloch()``. Triggers profile mode.
     xlabel : str, optional
-        Profile mode only. X-axis label. Defaults to 'Position' or
-        'Off-resonance frequency (Hz)'.
+        Profile mode only. X-axis label. Defaults to 'B1+ scaling' or
+        'Off-resonance frequency (Hz)' or 'Position'.
     title : str, optional
         Plot title.
     filepath : str, optional
@@ -322,10 +326,12 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
 
     # Detect profile mode
     x, default_xlabel = None, None
-    if dp is not None and np.asarray(dp).size > 1:
-        x, default_xlabel = np.asarray(dp, dtype=float).ravel(), 'Position'
+    if db1 is not None and np.asarray(db1).size > 1:
+        x, default_xlabel = np.asarray(db1, dtype=float).ravel(), 'B1+ scaling'
     elif df is not None and np.asarray(df).size > 1:
         x, default_xlabel = np.asarray(df, dtype=float).ravel(), 'Off-resonance frequency (Hz)'
+    elif dp is not None and np.asarray(dp).size > 1:
+        x, default_xlabel = np.asarray(dp, dtype=float).ravel(), 'Position'
 
     if x is not None:
         return _animate_profile(mx, my, mz, x, dt=dt,
@@ -348,7 +354,7 @@ def animate_bloch(mx, my, mz, dt=None, dp=None, df=None,
 # Public: plot_bloch
 # ---------------------------------------------------------------------------
 
-def plot_bloch(mx, my, mz, dp=None, df=None,
+def plot_bloch(mx, my, mz, db1=None, df=None, dp=None,
                xlabel=None, title=None, filepath=None,
                dt=None, dpi=200, unit_sphere=True, b1=None, g=None, b1_units='uT', g_units='mT/m',
                b1_mode='mag'):
@@ -357,7 +363,7 @@ def plot_bloch(mx, my, mz, dp=None, df=None,
 
     Dispatches automatically:
 
-    - *dp* or *df* with more than one element → 3-panel line plot of
+    - *db1*, *df* or *dp* with more than one element → 3-panel line plot of
       Mx/My/Mz vs position or frequency.
     - Neither → Bloch sphere with the magnetisation vector.
 
@@ -365,10 +371,12 @@ def plot_bloch(mx, my, mz, dp=None, df=None,
     ----------
     mx, my, mz : array_like
         mode=0 magnetisation output of ``bloch()``.
-    dp : array_like, shape (n,), optional
-        Spatial positions. Triggers profile mode.
+    db1 : array_like, shape (n,), optional
+        B1+ scaling factors. Triggers profile mode.
     df : array_like, shape (n,), optional
         Off-resonance frequencies. Triggers profile mode.
+    dp : array_like, shape (n,), optional
+        Spatial positions. Triggers profile mode.
     xlabel : str, optional
         X-axis label (profile mode). Defaults to 'Position' or
         'Off-resonance frequency (Hz)'.
@@ -407,10 +415,13 @@ def plot_bloch(mx, my, mz, dp=None, df=None,
     mz = np.asarray(mz, dtype=float).ravel()
 
     x, default_xlabel = None, None
-    if dp is not None and np.asarray(dp).size > 1:
-        x, default_xlabel = np.asarray(dp, dtype=float).ravel(), 'Position'
+    if db1 is not None and np.asarray(db1).size > 1:
+        x, default_xlabel = np.asarray(db1, dtype=float).ravel(), 'B1+ scaling'
     elif df is not None and np.asarray(df).size > 1:
         x, default_xlabel = np.asarray(df, dtype=float).ravel(), 'Off-resonance frequency (Hz)'
+    elif dp is not None and np.asarray(dp).size > 1:
+        x, default_xlabel = np.asarray(dp, dtype=float).ravel(), 'Position'
+
 
     if x is not None:
         fig = _plot_profile(mx, my, mz, x, dt=dt,

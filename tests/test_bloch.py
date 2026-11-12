@@ -79,6 +79,17 @@ class TestPhysics:
         mx, my, mz = bloch(b1, _no_gr(), DT)
         assert np.sqrt(mx**2 + my**2 + mz**2) == pytest.approx(1.0)
 
+    def test_b1_scaling_reduces_flip_angle(self):
+            """Half-scale RF turns a 90-degree pulse into a 45-degree tip."""
+            db1 = np.array([1.0, 0.5])
+            b1 = _hard_pulse(np.pi / 2)
+            mx, my, mz = bloch(b1, _no_gr(), DT, db1=db1)
+
+            assert mx.shape == (2,)
+            assert mx == pytest.approx([0.0, 0.0])
+            assert my == pytest.approx([-1.0, -np.sin(np.pi / 4)])
+            assert mz == pytest.approx([0.0, np.cos(np.pi / 4)])
+
     # ---- relaxation tests --------------------------------------------------
 
     def test_t2_decay_no_rf(self):
@@ -181,7 +192,7 @@ class TestPhysics:
         """Spoiling zeroes only transverse components, not Mz."""
         spoil = np.zeros(NTIME)
         spoil[0] = 1
-        mx, my, mz = bloch(_no_rf(), _no_gr(), DT, mx0=0.0, my0=0.0, mz0=1.0, spoil=spoil)
+        _, _, mz = bloch(_no_rf(), _no_gr(), DT, mx0=0.0, my0=0.0, mz0=1.0, spoil=spoil)
         assert mz == pytest.approx(1.0)
 
 # ---------------------------------------------------------------------------
@@ -206,7 +217,7 @@ class TestOutputShape:
 
     # ---- single-element arrays also squeeze to 0-d -------------------------
 
-    def test_single_element_df_dp_dv_arrays_mode0_squeezed(self):
+    def test_single_element_db1_df_dp_dv_arrays_mode0(self):
         mx_s, my_s, mz_s = bloch(_no_rf(), _no_gr(), DT,
                                  mx0=0.0, my0=0.0, mz0=0.0)
         mx_a, my_a, mz_a = bloch(_no_rf(), _no_gr(), DT,
@@ -218,7 +229,7 @@ class TestOutputShape:
         assert my_s == my_a
         assert mz_s == mz_a
 
-    def test_single_element_df_dp_dv_arrays_mode1_squeezed(self):
+    def test_single_element_db1_df_dp_dv_arrays_mode1(self):
         mx_s, my_s, mz_s = bloch(_no_rf(), _no_gr(), DT,
                                  mx0=0.0, my0=0.0, mz0=0.0, mode=1)
         mx_a, my_a, mz_a = bloch(_no_rf(), _no_gr(), DT,
@@ -231,6 +242,13 @@ class TestOutputShape:
         assert mz_s == pytest.approx(mz_a)
 
     # ---- multi-element arrays ------------------------------------------
+
+    def test_multi_db1_mode0(self):
+        db1 = np.array([0.5, 1.0])
+        mx, my, mz = bloch(_no_rf(), _no_gr(), DT, db1=db1)
+        assert mx.shape == (2,)
+        assert my.shape == (2,)
+        assert mz.shape == (2,)
 
     def test_multi_df_mode0(self):
         df = np.linspace(-200, 200, 5)
@@ -257,27 +275,53 @@ class TestOutputShape:
         df = np.linspace(-200, 200, 5)
         dp = np.array([0.0, 1.0, 2.0])
         mx, my, mz = bloch(_no_rf(), _no_gr(), DT, df=df, dp=dp)
-        assert mx.shape == (5, 3)
-        assert my.shape == (5, 3)
-        assert mz.shape == (5, 3)
+        assert mx.shape == (3, 5)
+        assert my.shape == (3, 5)
+        assert mz.shape == (3, 5)
 
-    def test_multi_dv_df_dp_mode0(self):
-        dv = np.array([0.0, 10.0])
+    def test_multi_df_dp_dv_mode0(self):
         df = np.linspace(-200, 200, 5)
         dp = np.array([0.0, 1.0, 2.0])
+        dv = np.array([0.0, 10.0])
         mx, my, mz = bloch(_no_rf(), _no_gr(), DT, df=df, dp=dp, dv=dv)
-        assert mx.shape == (2, 5, 3)
-        assert my.shape == (2, 5, 3)
-        assert mz.shape == (2, 5, 3)
+        assert mx.shape == (2, 3, 5)
+        assert my.shape == (2, 3, 5)
+        assert mz.shape == (2, 3, 5)
 
-    def test_multi_dv_df_dp_mode1(self):
-        dv = np.array([0.0, 10.0])
+    def test_multi_df_dp_dv_mode1(self):
         df = np.linspace(-200, 200, 5)
         dp = np.array([0.0, 1.0, 2.0])
+        dv = np.array([0.0, 10.0])
         mx, my, mz = bloch(_no_rf(), _no_gr(), DT, df=df, dp=dp, dv=dv, mode=1)
-        assert mx.shape == (2, 5, 3, NTIME)
-        assert my.shape == (2, 5, 3, NTIME)
-        assert mz.shape == (2, 5, 3, NTIME)
+        assert mx.shape == (2, 3, 5, NTIME)
+        assert my.shape == (2, 3, 5, NTIME)
+        assert mz.shape == (2, 3, 5, NTIME)
+
+    def test_multi_db1_df_dp_dv_mode0(self):
+        db1 = np.array([0.5, 1.0])
+        df = np.array([-100.0, 0.0, 100.0])
+        dp = np.array([0.0, 0.01, 0.02, 0.03])
+        dv = np.array([0.0, 0.1, 0.2, 0.3, 0.4])
+        mx, my, mz = bloch(_no_rf(), _no_gr(), DT,
+                           db1=db1, df=df, dp=dp, dv=dv, mode=0)
+
+        expected_shape = (5, 4, 3, 2)
+        assert mx.shape == expected_shape
+        assert my.shape == expected_shape
+        assert mz.shape == expected_shape
+
+    def test_multi_db1_df_dp_dv_mode1(self):
+        db1 = np.array([0.5, 1.0])
+        df = np.array([-100.0, 0.0, 100.0])
+        dp = np.array([0.0, 0.01, 0.02, 0.03])
+        dv = np.array([0.0, 0.1, 0.2, 0.3, 0.4])
+        mx, my, mz = bloch(_no_rf(), _no_gr(), DT,
+                           db1=db1, df=df, dp=dp, dv=dv, mode=1)
+
+        expected_shape = (5, 4, 3, 2, NTIME)
+        assert mx.shape == expected_shape
+        assert my.shape == expected_shape
+        assert mz.shape == expected_shape
 
     # ---- gradient array shapes -----------------------------------------
 

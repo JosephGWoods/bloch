@@ -1,10 +1,10 @@
 % Bloch simulator working in Hz units (to treat all nuclei equally).
 %
 % [mx,my,mz] = bloch(b1,gr,tp)
-% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,df,dp,dv)
-% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,df,dp,dv,mode)
-% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,df,dp,dv,mode,mx0,my0,mz0)
-% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,df,dp,dv,mode,mx0,my0,mz0,spoil)
+% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,db1,df,dp,dv)
+% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,db1,df,dp,dv,mode)
+% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,db1,df,dp,dv,mode,mx0,my0,mz0)
+% [mx,my,mz] = bloch(b1,gr,tp,t1,t2,db1,df,dp,dv,mode,mx0,my0,mz0,spoil)
 %
 % Bloch simulation of rotations due to B1, gradient and off-resonance,
 % including relaxation effects.
@@ -19,17 +19,18 @@
 % Optional inputs (use [] to accept the default):
 %   t1          - T1 relaxation time (s). Default: inf (no T1 relaxation).
 %   t2          - T2 relaxation time (s). Default: inf (no T2 relaxation).
+%   db1         - (Bx1) B1+ scaling factors (fraction). Default: 1.
 %   df          - (Fx1) Off-resonance frequencies (Hz). Default: 0.
 %   dp          - (Px1,2,3) Spatial positions (units). Default: 0.
 %   dv          - (Vx1,2,3) Velocities (units/s). Default: 0.
 %   mode        - 0 = endpoint only (default), 1 = all time points.
-%   mx0,my0,mz0 - (PxFxV or scalar) Initial magnetisation. Default: [0;0;1].
+%   mx0,my0,mz0 - (BxFxPxV or scalar) Initial magnetisation. Default: [0;0;1].
 %   spoil       - (Tx1) Spoiling flags (1 = zero Mx/My before that step).
 %                 Default: all zeros.
 %
 % Outputs:
 %   mx,my,mz - Magnetisation components.
-%              Shape (PxFxV) for mode=0, or (TxPxFxV) for mode=1.
+%              Shape (BxFxPxV) for mode=0, or (TxBxFxPxV) for mode=1.
 %              Singleton dimensions are squeezed.
 %
 % Sign convention: a 90-degree x-pulse (real B1) rotates Mz to -My.
@@ -37,10 +38,9 @@
 %
 % Special commands:
 %   bloch('debug', true|false) - Enable/disable debug printing.
-%   bloch('gamma')              - Return GAMMA (2*pi).
-%   bloch('threads', n)         - Set the number of OpenMP threads used by
-%                                 blochsimfz (no effect if built without OpenMP).
-%   bloch('threads')            - Return the current OpenMP thread count.
+%   bloch('gamma')             - Return GAMMA (2*pi).
+%   bloch('threads', n)        - Set the number of OpenMP threads used (no effect if built without OpenMP).
+%   bloch('threads')           - Return the current OpenMP thread count.
 %
 % B. Hargreaves   Nov 2003. Original bloch simulator.
 % M. Robson       Reversed sign of gyromagnetic ratio.
@@ -49,8 +49,9 @@
 % J.G. Woods      Apr 2020. Velocity/flow support.
 %                 May 2026. Wrapper only; core code in bloch_mex.c / bloch.c.
 %                 Sep 2026. OpenMP parallelization support.
+%                 Nov 2026. B1+ scaling support.
 
-function [mx, my, mz] = bloch(b1, gr, tp, t1, t2, df, dp, dv, mode, mx0, my0, mz0, spoil)
+function [mx, my, mz] = bloch(b1, gr, tp, t1, t2, db1, df, dp, dv, mode, mx0, my0, mz0, spoil)
 
 % Require the compiled MEX file — does not attempt auto-compilation.
 if exist('bloch_mex', 'file') ~= 3
@@ -75,14 +76,29 @@ end
 % Apply defaults for optional parameters
 if nargin < 4  || isempty(t1),    t1    = inf; end
 if nargin < 5  || isempty(t2),    t2    = inf; end
-if nargin < 6  || isempty(df),    df    = 0;   end
-if nargin < 7  || isempty(dp),    dp    = 0;   end
-if nargin < 8  || isempty(dv),    dv    = 0;   end
-if nargin < 9  || isempty(mode),  mode  = 0;   end
-if nargin < 10 || isempty(mx0),   mx0   = 0;   end
-if nargin < 11 || isempty(my0),   my0   = 0;   end
-if nargin < 12 || isempty(mz0),   mz0   = 1;   end
-if nargin < 13 || isempty(spoil), spoil = zeros(size(b1)); end
+if nargin < 6  || isempty(db1),   db1   = 1;   end
+if nargin < 7  || isempty(df),    df    = 0;   end
+if nargin < 8  || isempty(dp),    dp    = 0;   end
+if nargin < 9  || isempty(dv),    dv    = 0;   end
+if nargin < 10 || isempty(mode),  mode  = 0;   end
+if nargin < 11 || isempty(mx0),   mx0   = 0;   end
+if nargin < 12 || isempty(my0),   my0   = 0;   end
+if nargin < 13 || isempty(mz0),   mz0   = 1;   end
+if nargin < 14 || isempty(spoil), spoil = zeros(size(b1)); end
 
 % Call the MEX function
-[mx, my, mz] = bloch_mex(b1, gr, tp, t1, t2, df, dp, dv, mode, mx0, my0, mz0, spoil);
+[mx, my, mz] = bloch_mex(b1, gr, tp, t1, t2, db1, df, dp, dv, mode, mx0, my0, mz0, spoil);
+
+% Squeeze singleton dimensions (no longer done in MEX file for simplicity)
+if mode == 0 && isrow(mx) && isrow(my) && isrow(mz)
+    % If mode=0 and outputs are row vectors ([1 x N]), the squeeze below won't squeeze the leading
+    % singleton dimension, so we manually reshape to ensure the outputs are always [N x 1].
+    mx = mx(:);
+    my = my(:);
+    mz = mz(:);
+else
+    % Otherwise, simply use squeeze to remove any singleton dimensions.
+    mx = squeeze(mx);
+    my = squeeze(my);
+    mz = squeeze(mz);
+end

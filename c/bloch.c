@@ -219,9 +219,11 @@ int times2intervals( double *endtimes, double *intervals, long n)
 
 void blochsim(double *b1real, double *b1imag, double *xgrad, double *ygrad, double *zgrad,
         double *tsteps, int ntime, double *e1, double *e2,
-        double df, double dx, double dy, double dz, double dxv, double dyv, double dzv,
+        double db1, double df,
+        double dx, double dy, double dz,
+        double dxv, double dyv, double dzv,
         double *mx, double *my, double *mz, int mode, double *spoil)
-/* Go through time for one df and one dx,dy,dz and one dxv,dyv,dzv. */
+/* Go through time for one db1, one df and one dx,dy,dz and one dxv,dyv,dzv. */
 {
     int count;
     int tcount;
@@ -263,13 +265,12 @@ void blochsim(double *b1real, double *b1imag, double *xgrad, double *ygrad, doub
         }
         
         /*	Rotation */
-        /* N.B. The SENSE of ROTATION was changed in code on the B Hargreaves'
-         * website. Use NEW (2013) convention here, but keep z-rotation
-         * following the convention in M. Levitt. "Spin Dynamics" for the
-         * (observable) -1 coherence order. */
+        /* N.B. The SENSE of ROTATION was changed in code on the B Hargreaves' website.
+         * Use NEW (2013) convention here, but keep z-rotation following the convention
+         * in M. Levitt. "Spin Dynamics" for the (observable) -1 coherence order. */
         rotz = (xgrad[tcount]*gammadx + ygrad[tcount]*gammady + zgrad[tcount]*gammadz + df*TWOPI ) * tsteps[tcount]; /* BH code is -(xgrad[tcount] ...) */
-        rotx = (+ b1real[tcount] * GAMMA * tsteps[tcount] ); /* BH code is (- b1real[tcount] ...) */
-        roty = (+ b1imag[tcount] * GAMMA * tsteps[tcount] );
+        rotx = (+ b1real[tcount] * GAMMA * db1 * tsteps[tcount] ); /* BH code is (- b1real[tcount] ...) */
+        roty = (+ b1imag[tcount] * GAMMA * db1 * tsteps[tcount] );
         /* End of change. */
         
         calcrotmat(rotx, roty, rotz, rotmat);
@@ -322,8 +323,10 @@ void blochsim(double *b1real, double *b1imag, double *xgrad, double *ygrad, doub
 }
 
 
-void blochsimfz(double *b1real, double *b1imag, double *xgrad, double *ygrad, double *zgrad,
-        double *tsteps, int ntime, double t1, double t2, double *dfreq, int nfreq,
+void blochsimbfzv(double *b1real, double *b1imag, double *xgrad, double *ygrad, double *zgrad,
+        double *tsteps, int ntime, double t1, double t2,
+        double *db1, int nb1,
+        double *dfreq, int nfreq,
         double *dxpos, double *dypos, double *dzpos, int npos,
         double *dxvel, double *dyvel, double *dzvel, int nvel,
         double *mx, double *my, double *mz, int mode, double *spoil)
@@ -346,25 +349,33 @@ void blochsimfz(double *b1real, double *b1imag, double *xgrad, double *ygrad, do
     //int totpoints = npos*nfreq*nvel;
     //int totcount = 0;
 
-    #pragma omp parallel for collapse(3) schedule(static)
+    #pragma omp parallel for collapse(4) schedule(static)
     for (int vcount=0; vcount<nvel; vcount++) {
-        
-        for (int fcount=0; fcount<nfreq; fcount++) {
-            
-            for (int pcount=0; pcount<npos; pcount++) {
 
-                int out_offset = (((vcount * nfreq) + fcount) * npos + pcount) * ntout;
-                double *mxp = mx + out_offset;
-                double *myp = my + out_offset;
-                double *mzp = mz + out_offset;
-                
-                blochsim(b1real, b1imag, xgrad, ygrad, zgrad,
-                            tsteps, ntime, e1, e2, dfreq[fcount], dxpos[pcount], dypos[pcount], dzpos[pcount],
-                            dxvel[vcount], dyvel[vcount], dzvel[vcount], mxp, myp, mzp, mode, spoil);
-                
-                //totcount++;
-                //if ((totpoints > 40000) && ( ((10*totcount)/totpoints) > (10*(totcount-1)/totpoints) ))
-                //{ printf("%d%% Complete.\n",(100*totcount/totpoints)); }
+        for (int pcount=0; pcount<npos; pcount++) {
+
+            for (int fcount=0; fcount<nfreq; fcount++) {
+
+                for (int bcount=0; bcount<nb1; bcount++) {
+
+                    int out_offset = ((((vcount * npos) + pcount) * nfreq + fcount) * nb1 + bcount) * ntout;
+                    double *mxp = mx + out_offset;
+                    double *myp = my + out_offset;
+                    double *mzp = mz + out_offset;
+
+                    blochsim(b1real, b1imag, xgrad, ygrad, zgrad,
+                                tsteps, ntime, e1, e2,
+                                db1[bcount], dfreq[fcount],
+                                dxpos[pcount], dypos[pcount], dzpos[pcount],
+                                dxvel[vcount], dyvel[vcount], dzvel[vcount],
+                                mxp, myp, mzp, mode, spoil);
+
+                    //totcount++;
+                    //if ((totpoints > 40000) && ( ((10*totcount)/totpoints) > (10*(totcount-1)/totpoints) ))
+                    //{ printf("%d%% Complete.\n",(100*totcount/totpoints)); }
+
+                }
+
             }
 
         }

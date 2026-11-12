@@ -29,17 +29,19 @@ int    times2intervals(double *endtimes, double *intervals, long n);
 void   blochsim(double *b1real, double *b1imag,
                 double *xgrad, double *ygrad, double *zgrad,
                 double *tsteps, int ntime, double *e1, double *e2,
-                double df, double dx, double dy, double dz,
+                double db1, double df,
+                double dx, double dy, double dz,
                 double dxv, double dyv, double dzv,
                 double *mx, double *my, double *mz, int mode, double *spoil);
 
-void   blochsimfz(double *b1real, double *b1imag,
-                  double *xgrad, double *ygrad, double *zgrad,
-                  double *tsteps, int ntime, double t1, double t2,
-                  double *dfreq, int nfreq,
-                  double *dxpos, double *dypos, double *dzpos, int npos,
-                  double *dxvel, double *dyvel, double *dzvel, int nvel,
-                  double *mx, double *my, double *mz, int mode, double *spoil);
+void   blochsimbfzv(double *b1real, double *b1imag,
+                    double *xgrad, double *ygrad, double *zgrad,
+                    double *tsteps, int ntime, double t1, double t2,
+                    double *db1, int nb1,
+                    double *dfreq, int nfreq,
+                    double *dxpos, double *dypos, double *dzpos, int npos,
+                    double *dxvel, double *dyvel, double *dzvel, int nvel,
+                    double *mx, double *my, double *mz, int mode, double *spoil);
 
 /* ===== OpenMP thread control ===== */
 /* No-ops / return 1 when built without OpenMP support. */

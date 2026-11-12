@@ -2,7 +2,7 @@
 """
 Python wrapper for the Bloch equation simulator.
 
-Wraps blochsimfz() from bloch.c via ctypes, providing a high-level bloch()
+Wraps blochsimbfzv() from bloch.c via ctypes, providing a high-level bloch()
 function whose interface mirrors the MATLAB bloch.m wrapper.
 
 Units (must be mutually consistent):
@@ -10,6 +10,7 @@ Units (must be mutually consistent):
     gr     - gradient amplitudes (Hz/units)
     tp     - time steps (s)
     t1, t2 - relaxation times (s)
+    db1    - B1+ scaling factors (unitless)
     df     - off-resonance frequencies (Hz)
     dp     - spatial positions (units)
     dv     - velocities (units/s)
@@ -46,11 +47,11 @@ if not os.path.exists(_lib_path):
 _lib = ctypes.CDLL(_lib_path)
 
 # ---------------------------------------------------------------------------
-# Define C function signature for blochsimfz
+# Define C function signature for blochsimbfzv
 # ---------------------------------------------------------------------------
 _nd = np.ctypeslib.ndpointer(dtype=np.float64, flags='C_CONTIGUOUS')
 
-_lib.blochsimfz.argtypes = [
+_lib.blochsimbfzv.argtypes = [
     _nd,             # b1real
     _nd,             # b1imag
     _nd,             # xgrad
@@ -60,6 +61,8 @@ _lib.blochsimfz.argtypes = [
     ctypes.c_int,    # ntime
     ctypes.c_double, # t1
     ctypes.c_double, # t2
+    _nd,             # db1
+    ctypes.c_int,    # nb1
     _nd,             # dfreq
     ctypes.c_int,    # nfreq
     _nd,             # dxpos
@@ -76,7 +79,7 @@ _lib.blochsimfz.argtypes = [
     ctypes.c_int,    # mode
     _nd,             # spoil
 ]
-_lib.blochsimfz.restype = None
+_lib.blochsimbfzv.restype = None
 
 _lib.bloch_set_num_threads.argtypes = [ctypes.c_int]
 _lib.bloch_set_num_threads.restype = None
@@ -86,7 +89,7 @@ _lib.bloch_get_max_threads.restype = ctypes.c_int
 
 def threads(n=None):
     """
-    Get or set the number of OpenMP threads used by blochsimfz.
+    Get or set the number of OpenMP threads used by blochsimbfzv.
 
     Parameters
     ----------
@@ -110,10 +113,10 @@ def threads(n=None):
 # High-level Python wrapper
 # ---------------------------------------------------------------------------
 def bloch(b1, gr, tp,
-          t1=np.inf, t2=np.inf, df=0.0, dp=0.0, dv=0.0,
+          t1=np.inf, t2=np.inf, db1=1.0, df=0.0, dp=0.0, dv=0.0,
           mode=0, mx0=None, my0=None, mz0=None, spoil=None):
     """
-    Bloch equation simulator (ctypes wrapper for blochsimfz).
+    Bloch equation simulator (ctypes wrapper for blochsimbfzv).
 
     Parameters
     ----------
@@ -127,6 +130,8 @@ def bloch(b1, gr, tp,
         T1 relaxation time (s). Default is np.inf (no T1 relaxation).
     t2 : float
         T2 relaxation time (s). Default is np.inf (no T2 relaxation).
+    db1 : array_like, shape (nb1,)
+        B1+ scaling factor. Default is 1.0 (no scaling).
     df : array_like, shape (nfreq,)
         Off-resonance frequencies (Hz). Default is 0.0 (on-resonance).
     dp : array_like, shape (npos,) or (npos, 2) or (npos, 3)
@@ -138,7 +143,7 @@ def bloch(b1, gr, tp,
     mode : int, optional
         0 — return magnetisation only at the endpoint (default).
         1 — return magnetisation at every time step.
-    mx0, my0, mz0 : array_like, shape (nvel, nfreq, npos), optional
+    mx0, my0, mz0 : array_like, shape (nvel, npos, nfreq, nb1), optional
         Initial magnetisation components. Defaults to [0, 0, 1] everywhere.
     spoil : array_like, shape (ntime,), optional
         Per-step spoiling flags (1 = zero Mx/My before that step).
@@ -148,8 +153,8 @@ def bloch(b1, gr, tp,
     -------
     mx, my, mz : ndarray
         Magnetisation components.
-        Shape is (nvel, nfreq, npos) for mode=0, or
-        (nvel, nfreq, npos, ntime) for mode=1.
+        Shape is (nvel, npos, nfreq, nb1) for mode=0, or
+        (nvel, npos, nfreq, nb1, ntime) for mode=1.
         Singleton dimensions are squeezed.
     """
     # --- b1 ---
@@ -176,6 +181,10 @@ def bloch(b1, gr, tp,
     tp = np.ascontiguousarray(tp)
     if tp.size != ntime:
         raise ValueError("Time step array must have length equal to ntime or be a scalar.")
+
+    # --- B1+ scaling factors ---
+    db1 = np.ascontiguousarray(np.asarray(db1, dtype=np.float64).ravel())
+    nb1 = len(db1)
 
     # --- off-resonance frequencies ---
     df = np.ascontiguousarray(np.asarray(df, dtype=np.float64).ravel())
@@ -209,9 +218,9 @@ def bloch(b1, gr, tp,
         raise ValueError("Spoil array must have length equal to ntime.")
 
     # --- allocate output arrays ---
-    # C inner loop order: vel → freq → pos, with ntout values per combination.
+    # C inner loop order: vel → pos → freq → b1, with ntout values per combination.
     ntout = ntime if mode == 1 else 1
-    total = nvel * nfreq * npos * ntout
+    total = nvel * npos * nfreq * nb1 * ntout
     mx = np.zeros(total, dtype=np.float64)
     my = np.zeros(total, dtype=np.float64)
     mz = np.zeros(total, dtype=np.float64)
@@ -219,38 +228,39 @@ def bloch(b1, gr, tp,
     # Set initial magnetisation.
     # blochsim() reads *mx, *my, *mz before the time loop, so write the
     # starting value into element [idx * ntout] of each flat output array.
-    # If the user provides a single value for mx0, my0, or mz0, broadcast it to all combinations of vel/freq/pos.
+    # If the user provides a single value for mx0, my0, or mz0, broadcast it to all combinations of vel/pos/freq/b1.
     if mx0 is not None or my0 is not None or mz0 is not None:
-        _mx0 = np.asarray(mx0 if mx0 is not None else np.zeros((nvel, nfreq, npos)), dtype=np.float64).ravel()
-        _my0 = np.asarray(my0 if my0 is not None else np.zeros((nvel, nfreq, npos)), dtype=np.float64).ravel()
-        _mz0 = np.asarray(mz0 if mz0 is not None else np.ones( (nvel, nfreq, npos)), dtype=np.float64).ravel()
+        _mx0 = np.asarray(mx0 if mx0 is not None else np.zeros((nvel, npos, nfreq, nb1)), dtype=np.float64).ravel()
+        _my0 = np.asarray(my0 if my0 is not None else np.zeros((nvel, npos, nfreq, nb1)), dtype=np.float64).ravel()
+        _mz0 = np.asarray(mz0 if mz0 is not None else np.ones( (nvel, npos, nfreq, nb1)), dtype=np.float64).ravel()
         if _mx0.size == 1:
-            _mx0 = np.full(nvel * nfreq * npos, _mx0[0])
+            _mx0 = np.full(nvel * npos * nfreq * nb1, _mx0[0])
         if _my0.size == 1:
-            _my0 = np.full(nvel * nfreq * npos, _my0[0])
+            _my0 = np.full(nvel * npos * nfreq * nb1, _my0[0])
         if _mz0.size == 1:
-            _mz0 = np.full(nvel * nfreq * npos, _mz0[0])
-        if _mx0.size != nvel * nfreq * npos or \
-           _my0.size != nvel * nfreq * npos or \
-           _mz0.size != nvel * nfreq * npos:
-            raise ValueError("Initial magnetisation arrays must have shape (nvel, nfreq, npos) or be scalars.")
-        for idx in range(nvel * nfreq * npos):
+            _mz0 = np.full(nvel * npos * nfreq * nb1, _mz0[0])
+        if _mx0.size != nvel * npos * nfreq * nb1 or \
+           _my0.size != nvel * npos * nfreq * nb1 or \
+           _mz0.size != nvel * npos * nfreq * nb1:
+            raise ValueError("Initial magnetisation arrays must have shape (nvel, npos, nfreq, nb1) or be scalars.")
+        for idx in range(nvel * npos * nfreq * nb1):
             mx[idx * ntout] = _mx0[idx]
             my[idx * ntout] = _my0[idx]
             mz[idx * ntout] = _mz0[idx]
     else:
-        for idx in range(nvel * nfreq * npos):
+        for idx in range(nvel * npos * nfreq * nb1):
             mz[idx * ntout] = 1.0
 
     # --- call C ---
-    _lib.blochsimfz(b1r, b1i, gx, gy, gz, tp, ntime,
-                    t1, t2, df, nfreq,
+    _lib.blochsimbfzv(b1r, b1i, gx, gy, gz,
+                    tp, ntime, t1, t2,
+                    db1, nb1, df, nfreq,
                     dx, dy, dz, npos,
                     dvx, dvy, dvz, nvel,
                     mx, my, mz, mode, spoil)
 
-    # --- reshape to (nvel, nfreq, npos, ntout) and squeeze singletons ---
-    shape = (nvel, nfreq, npos, ntout)
+    # --- reshape to (nvel, npos, nfreq, nb1, ntout) and squeeze singletons ---
+    shape = (nvel, npos, nfreq, nb1, ntout)
     mx = mx.reshape(shape).squeeze()
     my = my.reshape(shape).squeeze()
     mz = mz.reshape(shape).squeeze()
